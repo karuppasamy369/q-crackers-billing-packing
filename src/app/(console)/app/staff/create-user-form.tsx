@@ -42,6 +42,15 @@ export function CreateUserForm() {
             <option value="PARTNER">Partner</option>
           </select>
         </div>
+        <div>
+          <label htmlFor="code" className="block text-sm font-medium">
+            Login / bill code
+          </label>
+          <input id="code" name="code" placeholder="auto" className={field} />
+          <p className="mt-1 text-xs text-gray-500">
+            Drives bill numbers. Blank = auto.
+          </p>
+        </div>
       </div>
 
       <button

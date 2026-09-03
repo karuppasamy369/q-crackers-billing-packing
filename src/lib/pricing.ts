@@ -105,3 +105,116 @@ export function computeOrderTotals(
     totalPaise,
   };
 }
+
+export type GstSplit = {
+  cgstPaise: number;
+  sgstPaise: number;
+  igstPaise: number;
+};
+
+/**
+ * Split a GST amount into CGST/SGST (intra-state supply — place of supply is
+ * the seller's own state) or IGST (inter-state).
+ */
+export function splitGst(taxPaise: number, intraState: boolean): GstSplit {
+  const tax = Math.max(0, Math.round(taxPaise));
+  if (!intraState) {
+    return { cgstPaise: 0, sgstPaise: 0, igstPaise: tax };
+  }
+  const cgstPaise = Math.floor(tax / 2);
+  return { cgstPaise, sgstPaise: tax - cgstPaise, igstPaise: 0 };
+}
+
+// --- Tax invoice --------------------------------------------------------
+
+export type InvoiceLineInput = PriceLineInput & {
+  discountPaise?: number;
+};
+
+export type InvoiceLine = InvoiceLineInput &
+  GstSplit & {
+    discountPaise: number;
+    taxableValuePaise: number;
+    lineTotalPaise: number;
+  };
+
+export type Invoice = {
+  lines: InvoiceLine[];
+  subtotalPaise: number;
+  discountPaise: number;
+  taxableValuePaise: number;
+  cgstPaise: number;
+  sgstPaise: number;
+  igstPaise: number;
+  shippingPaise: number;
+  roundOffPaise: number;
+  totalPaise: number;
+  intraState: boolean;
+};
+
+/**
+ * Build a GST tax invoice from line inputs. Per-line GST is computed then split
+ * into CGST/SGST or IGST; bill totals are the sums. All integer paise.
+ */
+export function computeInvoice(
+  items: InvoiceLineInput[],
+  opts: {
+    pricesIncludeGst: boolean;
+    intraState: boolean;
+    shippingPaise?: number;
+  },
+): Invoice {
+  const lines: InvoiceLine[] = items.map((item) => {
+    const priced = computeLine(item, opts.pricesIncludeGst);
+    const discountPaise = Math.max(0, Math.trunc(item.discountPaise ?? 0));
+    const taxableValuePaise = Math.max(
+      0,
+      priced.lineSubtotalPaise - discountPaise,
+    );
+    // Re-derive tax on the discounted taxable value so the invoice is exact.
+    const rate = Math.max(0, item.gstRateBp);
+    const lineTaxPaise = Math.round((taxableValuePaise * rate) / 10000);
+    const split = splitGst(lineTaxPaise, opts.intraState);
+    return {
+      ...item,
+      discountPaise,
+      taxableValuePaise,
+      ...split,
+      lineTotalPaise:
+        taxableValuePaise + split.cgstPaise + split.sgstPaise + split.igstPaise,
+    };
+  });
+
+  const subtotalPaise = lines.reduce(
+    (s, l) => s + l.taxableValuePaise + l.discountPaise,
+    0,
+  );
+  const discountPaise = lines.reduce((s, l) => s + l.discountPaise, 0);
+  const taxableValuePaise = lines.reduce((s, l) => s + l.taxableValuePaise, 0);
+  const cgstPaise = lines.reduce((s, l) => s + l.cgstPaise, 0);
+  const sgstPaise = lines.reduce((s, l) => s + l.sgstPaise, 0);
+  const igstPaise = lines.reduce((s, l) => s + l.igstPaise, 0);
+  const shippingPaise = Math.max(0, Math.trunc(opts.shippingPaise ?? 0));
+  const roundOffPaise = 0;
+  const totalPaise =
+    taxableValuePaise +
+    cgstPaise +
+    sgstPaise +
+    igstPaise +
+    shippingPaise +
+    roundOffPaise;
+
+  return {
+    lines,
+    subtotalPaise,
+    discountPaise,
+    taxableValuePaise,
+    cgstPaise,
+    sgstPaise,
+    igstPaise,
+    shippingPaise,
+    roundOffPaise,
+    totalPaise,
+    intraState: opts.intraState,
+  };
+}

@@ -53,10 +53,12 @@ describe("settings registry", () => {
     expect(s.safeParse("not-a-gstin").success).toBe(false);
   });
 
-  it("housePartnerCode must look like a partner code", () => {
+  it("housePartnerCode accepts a login code and upper-cases it", () => {
     const s = SETTINGS["billing.housePartnerCode"].schema;
-    expect(s.parse("p1")).toBe("P1");
-    expect(s.safeParse("S1").success).toBe(false);
+    expect(s.parse("pk")).toBe("PK");
+    expect(s.parse("PSR")).toBe("PSR");
+    expect(s.safeParse("").success).toBe(false);
+    expect(s.safeParse("has spaces").success).toBe(false);
   });
 
   it("isSettingKey / settingMeta", () => {

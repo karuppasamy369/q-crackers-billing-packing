@@ -74,6 +74,29 @@ enum OrderSource {
   INTERNAL
 }
 
+/// How a bill was raised. ONLINE_ORDER bills are generated for a paid online
+/// order (under the house partner code); COUNTER bills are walk-in sales
+/// created directly by a partner or staff member (under their own code).
+enum BillType {
+  ONLINE_ORDER
+  COUNTER
+}
+
+enum BillStatus {
+  ISSUED
+  CANCELLED
+}
+
+/// Payment mode recorded on a counter bill.
+enum PaymentMode {
+  CASH
+  UPI
+  CARD
+  BANK_TRANSFER
+  ONLINE
+  OTHER
+}
+
 // ---------------------------------------------------------------------------
 // RBAC
 // ---------------------------------------------------------------------------
@@ -149,7 +172,7 @@ model UserPermission {
 
 model User {
   id                  String    @id @default(uuid()) @db.Uuid
-  /// Immutable login code that drives bill numbering: P1, P2, P3, S1, S2, ...
+  /// Immutable login code that drives bill numbering: PK, PSR, KA, S1, S2, ...
   code                String    @unique
   name                String
   /// Stored lower-cased; unique.
@@ -178,6 +201,8 @@ model User {
   settingsEdited      Setting[]            @relation("SettingEditor")
   inventoryMovements  InventoryMovement[]  @relation("InventoryMovementAuthor")
   orderStatusChanges  OrderStatusHistory[] @relation("OrderStatusChanger")
+  billsCreated        Bill[]               @relation("BillCreator")
+  billsCancelled      Bill[]               @relation("BillCanceller")
 
   @@index([roleId])
   @@map("users")
@@ -316,6 +341,7 @@ model Product {
   inventory  Inventory?
   movements  InventoryMovement[]
   orderItems OrderItem[]
+  billItems  BillItem[]
 
   @@index([categoryId])
   @@index([isVisibleOnline, isActive])
@@ -396,6 +422,7 @@ model Customer {
   updatedAt       DateTime @updatedAt
 
   orders Order[]
+  bills  Bill[]
 
   @@index([phoneNormalized])
   @@map("customers")
@@ -447,6 +474,7 @@ model Order {
   customer Customer             @relation(fields: [customerId], references: [id], onDelete: Restrict)
   items    OrderItem[]
   history  OrderStatusHistory[]
+  bill     Bill?
 
   @@index([customerId])
   @@index([status])
@@ -494,4 +522,120 @@ model OrderStatusHistory {
 
   @@index([orderId, createdAt])
   @@map("order_status_history")
+}
+
+// ---------------------------------------------------------------------------
+// Billing (Phase 4)
+// ---------------------------------------------------------------------------
+
+/// One row per (userCode, fiscalYear). `lastNumber` is bumped atomically
+/// inside the bill-issuing transaction via INSERT ... ON CONFLICT DO UPDATE.
+model BillSequence {
+  userCode   String
+  fiscalYear Int
+  lastNumber Int      @default(0)
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+
+  @@id([userCode, fiscalYear])
+  @@map("bill_sequences")
+}
+
+model Bill {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// Human bill number, e.g. "PK-2026-0001". Unique; never reused.
+  billNumber String     @unique
+  /// The login code the number was allocated under.
+  userCode   String
+  fiscalYear Int
+  sequenceNo Int
+  type       BillType
+  status     BillStatus @default(ISSUED)
+
+  /// Who created it (null once that user is deleted, or for system issuance).
+  createdById String? @db.Uuid
+  /// Set only for ONLINE_ORDER bills.
+  orderId     String? @unique @db.Uuid
+  customerId  String? @db.Uuid
+
+  // --- Snapshots (immutable once issued) ---
+  sellerName      String
+  sellerGstin     String?
+  sellerStateCode String
+  sellerAddress   String?
+
+  buyerName      String
+  buyerPhone     String?
+  buyerGstin     String?
+  buyerAddress   String?
+  buyerStateCode String
+  buyerStateName String
+
+  /// true = intra-state supply (CGST + SGST); false = inter-state (IGST).
+  intraState  Boolean
+  paymentMode PaymentMode?
+
+  // All money integer paise.
+  subtotalPaise     Int
+  discountPaise     Int @default(0)
+  taxableValuePaise Int
+  cgstPaise         Int @default(0)
+  sgstPaise         Int @default(0)
+  igstPaise         Int @default(0)
+  /// Delivery / freight charge carried from an online order. Not GST-split in V1.
+  shippingPaise     Int @default(0)
+  roundOffPaise     Int @default(0)
+  totalPaise        Int
+
+  pdfStorageKey String?
+
+  cancelledReason String?
+  cancelledAt     DateTime?
+  cancelledById   String?   @db.Uuid
+
+  billedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdBy   User?      @relation("BillCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  cancelledBy User?      @relation("BillCanceller", fields: [cancelledById], references: [id], onDelete: SetNull)
+  order       Order?     @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  customer    Customer?  @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  items       BillItem[]
+
+  @@index([userCode, fiscalYear, sequenceNo])
+  @@index([status])
+  @@index([billedAt])
+  @@index([customerId])
+  @@map("bills")
+}
+
+model BillItem {
+  id     String @id @default(uuid()) @db.Uuid
+  billId String @db.Uuid
+
+  /// Nullable so a bill line survives product deletion; RESTRICT keeps it while
+  /// the product exists.
+  productId String? @db.Uuid
+
+  sku            String
+  name           String
+  hsnCode        String?
+  unitPricePaise Int
+  gstRateBp      Int
+  quantity       Int
+  discountPaise  Int     @default(0)
+
+  taxableValuePaise Int
+  cgstPaise         Int @default(0)
+  sgstPaise         Int @default(0)
+  igstPaise         Int @default(0)
+  lineTotalPaise    Int
+
+  bill    Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([billId])
+  @@map("bill_items")
 }

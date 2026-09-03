@@ -60,22 +60,26 @@ Every transition writes `order_status_history` + `audit_logs` + the relevant
 `tracking_events` + `notification_outbox` rows, in one transaction. Invalid
 transitions return 409 and change nothing.
 
-## Bill numbering
+## Bill numbering (Phase 4 — implemented)
 
-`<CODE>-<FY>-<SEQ4>`, e.g. `P1-2026-27-0001`. Allocation inside the
-bill-issuing transaction:
+`<CODE>-<FY>-<SEQ4>`, e.g. `PK-2026-0001`. `<FY>` is the Indian financial
+year's **starting calendar year** (`indianFiscalYear()`, April–March). Login
+codes: **PK, PSR, KA, S1, S2**. Allocation runs inside the bill transaction:
 
 ```sql
-INSERT INTO bill_sequences (user_code, fiscal_year_label, last_number)
-VALUES ($1, $2, 1)
-ON CONFLICT (user_code, fiscal_year_label)
-DO UPDATE SET last_number = bill_sequences.last_number + 1
-RETURNING last_number;
+INSERT INTO bill_sequences ("userCode", "fiscalYear", "lastNumber", "updatedAt", "createdAt")
+VALUES ($1, $2, 1, now(), now())
+ON CONFLICT ("userCode", "fiscalYear")
+DO UPDATE SET "lastNumber" = bill_sequences."lastNumber" + 1, "updatedAt" = now()
+RETURNING "lastNumber";
 ```
 
-Atomic, race-safe, per-login series. Cancelled bills keep their number.
+Atomic, race-safe (ON CONFLICT row lock), per-code series. Cancelled bills keep
+their number and the counter never decrements — numbers are never reused.
+Online-order bills allocate under `billing.housePartnerCode` (default `PK`);
+counter bills under the creating user's own code.
 
-## Data model — implemented (Phases 1–2)
+## Data model — implemented (Phases 1–4)
 
 Phase 1: `roles`, `permissions`, `role_permissions`, `user_permissions`,
 `users`, `sessions`, `audit_logs` (DB trigger rejects UPDATE/DELETE).
@@ -102,10 +106,18 @@ customer confirmation page is reached via a 24-byte random `orders.reference`
 (no sequential id exposed). `PaymentProvider` is the interface Phase 5's
 Razorpay adapter implements.
 
+Phase 4: `bills`, `bill_items`, `bill_sequences`. Bill money and the CGST/SGST
+vs IGST split are locked down by `CHECK` constraints. `billing-service` issues
+bills for a paid online order (house code) or as a counter sale (own code);
+counter sales move stock (`SALE` / `RETURN` movements) inside the same
+transaction as the bill. Invoice PDFs render with `@react-pdf/renderer`
+(`React.createElement`, no JSX) and are cached in the private bucket, served via
+`/api/billing/[id]/pdf` behind `billing.view`.
+
 ## Data model — later phases (planned)
 
-`payments`, `payment_webhook_events`, `bills`, `bill_sequences`, `bookings`,
-`lr_documents`, `tracking_tokens`, `tracking_events`, `notification_outbox`,
+`payments`, `payment_webhook_events`, `bookings`, `lr_documents`,
+`tracking_tokens`, `tracking_events`, `notification_outbox`,
 `notification_receipts`, `reviews`.
 
 ## Sessions

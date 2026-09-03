@@ -56,10 +56,10 @@ d("schema + seed", () => {
     const roleOf = (code: string) =>
       users.find((u) => u.code === code)?.role.key;
 
-    expect(users.map((u) => u.code)).toEqual(["P1", "P2", "P3", "S1", "S2"]);
-    expect(roleOf("P1")).toBe("PARTNER");
-    expect(roleOf("P2")).toBe("PARTNER");
-    expect(roleOf("P3")).toBe("PARTNER");
+    expect(users.map((u) => u.code)).toEqual(["KA", "PK", "PSR", "S1", "S2"]);
+    expect(roleOf("PK")).toBe("PARTNER");
+    expect(roleOf("PSR")).toBe("PARTNER");
+    expect(roleOf("KA")).toBe("PARTNER");
     expect(roleOf("S1")).toBe("STAFF");
     expect(roleOf("S2")).toBe("STAFF");
 
@@ -77,7 +77,7 @@ d("schema + seed", () => {
   });
 
   it("grants partners every permission", async () => {
-    const eff = await effectivePermissionsFor("P1");
+    const eff = await effectivePermissionsFor("PK");
     expect(eff.size).toBe(PERMISSION_KEYS.length);
   });
 

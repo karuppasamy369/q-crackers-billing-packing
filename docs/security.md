@@ -104,6 +104,26 @@ in Phase 1, ⏳ = designed, lands in a later phase.
   path and a sweep for expired holds, and converts the reservation into a
   `SALE` movement on successful payment.
 
+## Billing (Phase 4)
+
+| Control                                         | Status | Where                                                                                                                     |
+| ----------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------- |
+| Bill numbers generated server-side only         | ✅     | `billing-service.allocateBillNumber` — never in the browser                                                               |
+| Atomic, gap-free per-code sequence              | ✅     | `INSERT … ON CONFLICT DO UPDATE … RETURNING` inside the bill transaction; `bill_sequences` PK is `(userCode, fiscalYear)` |
+| No duplicate numbers under concurrency          | ✅     | the ON CONFLICT row lock serialises concurrent allocations (integration-tested in CI)                                     |
+| Cancelled bills keep their number; never reused | ✅     | cancel sets `status = CANCELLED` only; the sequence counter never decrements                                              |
+| `bill_number` unique constraint as a backstop   | ✅     | `bills.billNumber @unique`                                                                                                |
+| Bill money is internally consistent             | ✅     | DB `CHECK`: `total = taxable + CGST + SGST + IGST + shipping + roundOff`, per-line too; `taxable = subtotal − discount`   |
+| GST split matches supply type                   | ✅     | DB `CHECK`: intra-state ⇒ `igst = 0`; inter-state ⇒ `cgst = sgst = 0` (`splitGst`, unit + integration tested)             |
+| Online-order bills use the house partner code   | ✅     | `billing.housePartnerCode` setting; the service also verifies that code is an actual PARTNER account                      |
+| One bill per order                              | ✅     | `bills.orderId @unique`; `issueBillForOrder` is idempotent                                                                |
+| Bill only for a paid order                      | ✅     | `issueBillForOrder` requires `order.paymentStatus = PAID`                                                                 |
+| Counter sale moves stock atomically             | ✅     | one transaction: lock rows → decrement `quantityOnHand` → `SALE` movement; cancel reverses with a `RETURN` movement       |
+| Billing permissions enforced server-side        | ✅     | `billing.create` for issuing, `billing.cancel` for cancelling (staff have create, not cancel — integration-tested → 403)  |
+| Bill creation & cancellation audit-logged       | ✅     | `bill.issue` / `bill.cancel` audit entries with number, totals, reason                                                    |
+| Bill PDFs stored privately                      | ✅     | `bills/…` prefix in the private bucket; served only via `/api/billing/[id]/pdf` behind `billing.view`                     |
+| Immutable snapshots on the bill                 | ✅     | seller name/GSTIN/state, buyer details, HSN, rates and amounts are copied onto `bills` / `bill_items` at issue time       |
+
 ## Known Phase 1 limitations
 
 - Rate limiting is per-process. On multi-instance hosting it is a soft layer;

@@ -37,7 +37,7 @@ type SeedUser = {
 
 const SEED_USERS: SeedUser[] = [
   {
-    code: "P1",
+    code: "PK",
     name: "Partner 1",
     role: "PARTNER",
     emailEnv: "SEED_PARTNER1_EMAIL",
@@ -45,7 +45,7 @@ const SEED_USERS: SeedUser[] = [
     defaultEmail: "partner1@qcrackers.local",
   },
   {
-    code: "P2",
+    code: "PSR",
     name: "Partner 2",
     role: "PARTNER",
     emailEnv: "SEED_PARTNER2_EMAIL",
@@ -53,7 +53,7 @@ const SEED_USERS: SeedUser[] = [
     defaultEmail: "partner2@qcrackers.local",
   },
   {
-    code: "P3",
+    code: "KA",
     name: "Partner 3",
     role: "PARTNER",
     emailEnv: "SEED_PARTNER3_EMAIL",

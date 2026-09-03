@@ -6,6 +6,14 @@ export const createUserSchema = z.object({
   name: z.string().trim().min(2, "Enter a name.").max(120),
   email: emailSchema,
   role: z.enum(["PARTNER", "STAFF"]),
+  /// Optional explicit login/billing code (e.g. "PK"). Auto-generated if blank.
+  code: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[A-Z][A-Z0-9]{1,9}$/, "Use 2–10 letters/digits, e.g. PK.")
+    .optional()
+    .or(z.literal("")),
 });
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 

@@ -1,7 +1,7 @@
 /**
  * Phase 2 integration tests. Skipped unless TEST_DATABASE_URL is set.
  * CI runs `prisma migrate deploy` + `npm run db:seed` first, so roles,
- * permissions and the P1/P2/P3/S1/S2 accounts already exist.
+ * permissions and the PK/PSR/KA/S1/S2 accounts already exist.
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import {
@@ -37,7 +37,7 @@ const PNG = new Uint8Array([
 ]);
 
 async function seedCategoryAndProduct(sku = "SND-1") {
-  await loginAs(prisma, "P1");
+  await loginAs(prisma, "PK");
   const cat = await createCategory({ name: `Cat ${sku}`, sortOrder: 0 });
   const product = await createProduct({
     sku,
@@ -131,7 +131,7 @@ d("Phase 2 — catalogue & inventory", () => {
 
     it("price change is recorded in the audit log", async () => {
       const { product } = await seedCategoryAndProduct("AUD-1");
-      await loginAs(prisma, "P1");
+      await loginAs(prisma, "PK");
       await updateProductPrice({ id: product.id, priceRupees: "250" });
       const audit = await prisma.auditLog.findFirst({
         where: { action: "product.price_update", entityId: product.id },
@@ -146,7 +146,7 @@ d("Phase 2 — catalogue & inventory", () => {
 
   describe("storefront never exposes hidden products", () => {
     it("excludes offline and inactive products, and products in inactive categories", async () => {
-      await loginAs(prisma, "P1");
+      await loginAs(prisma, "PK");
       const cat = await createCategory({ name: "Visible" });
       const hiddenCat = await createCategory({ name: "Hidden" });
 
@@ -219,7 +219,7 @@ d("Phase 2 — catalogue & inventory", () => {
   describe("image upload validation", () => {
     it("rejects a non-image and an oversized file, accepts a real PNG", async () => {
       const { product } = await seedCategoryAndProduct("IMG-1");
-      await loginAs(prisma, "P1");
+      await loginAs(prisma, "PK");
 
       await expect(
         addProductImage(
@@ -245,7 +245,7 @@ d("Phase 2 — catalogue & inventory", () => {
 
     it("image bytes are gated for an offline product, public once published", async () => {
       const { product } = await seedCategoryAndProduct("GATE-1");
-      await loginAs(prisma, "P1");
+      await loginAs(prisma, "PK");
       await addProductImage({ productId: product.id }, PNG);
       const img = await prisma.productImage.findFirstOrThrow({
         where: { productId: product.id },
@@ -255,7 +255,7 @@ d("Phase 2 — catalogue & inventory", () => {
       expect(await loadProductImageBytes(img.id, false)).toBe("forbidden");
       expect(await loadProductImageBytes(img.id, true)).not.toBe("forbidden");
 
-      await loginAs(prisma, "P1");
+      await loginAs(prisma, "PK");
       await setProductVisibility({
         id: product.id,
         isActive: true,
@@ -272,7 +272,7 @@ d("Phase 2 — catalogue & inventory", () => {
   describe("stock adjustments", () => {
     it("records a movement with the running balance and blocks going negative", async () => {
       const { product } = await seedCategoryAndProduct("MV-1");
-      await loginAs(prisma, "P1");
+      await loginAs(prisma, "PK");
 
       await adjustStock({
         productId: product.id,
@@ -320,7 +320,7 @@ d("Phase 2 — catalogue & inventory", () => {
 
     it("set mode writes the delta correctly and is audited", async () => {
       const { product } = await seedCategoryAndProduct("MV-2");
-      await loginAs(prisma, "P1");
+      await loginAs(prisma, "PK");
       await adjustStock({
         productId: product.id,
         mode: "set",
@@ -342,7 +342,7 @@ d("Phase 2 — catalogue & inventory", () => {
 
   describe("settings", () => {
     it("partner update persists and is audited; unknown keys rejected", async () => {
-      await loginAs(prisma, "P1");
+      await loginAs(prisma, "PK");
       const res = await updateSettings({
         "storefront.announcement": "Diwali sale is on!",
         "shipping.flatPaise": "5000",
@@ -367,7 +367,7 @@ d("Phase 2 — catalogue & inventory", () => {
       });
 
       await expect(
-        updateSettings({ "billing.housePartnerCode": "S9" }),
+        updateSettings({ "billing.housePartnerCode": "not a code" }),
       ).rejects.toMatchObject({ code: "VALIDATION" });
     });
   });

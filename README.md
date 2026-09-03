@@ -4,7 +4,7 @@ Production web application for the Q Crackers fireworks business: a public
 storefront plus an internal operations console (billing, booking, parcel
 tracking).
 
-**Current status:** Phases 0–3 complete.
+**Current status:** Phases 0–4 complete.
 
 - **Phase 0/1** — foundation, authentication, roles & permissions (RBAC),
   database-backed sessions, append-only audit log.
@@ -14,9 +14,15 @@ tracking).
 - **Phase 3** — cart (browser-side, slug + quantity only), server-authoritative
   pricing/tax/shipping quote, checkout with customer details + fulfilment
   checks, atomic order creation with stock reservation, order confirmation page,
-  and a read-only internal Orders view. Razorpay slots in at Phase 5.
+  and a read-only internal Orders view.
+- **Phase 4** — billing: `bills` + `bill_sequences`, per-code atomic bill-number
+  allocation (`PK-2026-0001`), GST tax invoices (CGST/SGST or IGST), counter /
+  walk-in bills, online-order bills under the house partner code, cancel
+  (keeps the number), and `@react-pdf/renderer` invoice PDFs. The five login
+  codes are **PK / PSR / KA / S1 / S2**.
 
-Later phases (billing, payment, booking, tracking, WhatsApp) are not built yet.
+Later phases (payment, booking, tracking, WhatsApp) are not built yet. Razorpay
+slots into the `PaymentProvider` seam at Phase 5.
 
 ---
 

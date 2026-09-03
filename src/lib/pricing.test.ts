@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { computeLine, computeShipping, computeOrderTotals } from "./pricing";
+import {
+  computeLine,
+  computeShipping,
+  computeOrderTotals,
+  splitGst,
+  computeInvoice,
+} from "./pricing";
 
 const flat = (flatPaise: number, freeAbovePaise = 0) =>
   ({ mode: "flat", flatPaise, freeAbovePaise }) as const;
@@ -104,5 +110,80 @@ describe("computeOrderTotals", () => {
     });
     expect(totals.totalPaise).toBe(0);
     expect(totals.shippingPaise).toBe(0);
+  });
+});
+
+describe("splitGst", () => {
+  it("intra-state: CGST + SGST, no IGST; splits odd paise to SGST", () => {
+    expect(splitGst(1000, true)).toEqual({
+      cgstPaise: 500,
+      sgstPaise: 500,
+      igstPaise: 0,
+    });
+    expect(splitGst(999, true)).toEqual({
+      cgstPaise: 499,
+      sgstPaise: 500,
+      igstPaise: 0,
+    });
+  });
+  it("inter-state: IGST only", () => {
+    expect(splitGst(1000, false)).toEqual({
+      cgstPaise: 0,
+      sgstPaise: 0,
+      igstPaise: 1000,
+    });
+  });
+});
+
+describe("computeInvoice", () => {
+  const lines = [
+    { unitPricePaise: 10000, gstRateBp: 1800, quantity: 2 },
+    { unitPricePaise: 5000, gstRateBp: 500, quantity: 1 },
+  ];
+
+  it("intra-state, GST-exclusive: totals are consistent and CHECK-safe", () => {
+    const inv = computeInvoice(lines, {
+      pricesIncludeGst: false,
+      intraState: true,
+    });
+    expect(inv.igstPaise).toBe(0);
+    expect(inv.taxableValuePaise).toBe(25000);
+    expect(inv.cgstPaise + inv.sgstPaise).toBe(3600 + 250);
+    expect(inv.totalPaise).toBe(
+      inv.taxableValuePaise +
+        inv.cgstPaise +
+        inv.sgstPaise +
+        inv.igstPaise +
+        inv.shippingPaise +
+        inv.roundOffPaise,
+    );
+    for (const l of inv.lines) {
+      expect(l.lineTotalPaise).toBe(
+        l.taxableValuePaise + l.cgstPaise + l.sgstPaise + l.igstPaise,
+      );
+    }
+  });
+
+  it("inter-state uses IGST and carries shipping into the total", () => {
+    const inv = computeInvoice(lines, {
+      pricesIncludeGst: false,
+      intraState: false,
+      shippingPaise: 4000,
+    });
+    expect(inv.cgstPaise).toBe(0);
+    expect(inv.sgstPaise).toBe(0);
+    expect(inv.igstPaise).toBe(3850);
+    expect(inv.shippingPaise).toBe(4000);
+    expect(inv.totalPaise).toBe(25000 + 3850 + 4000);
+  });
+
+  it("GST-inclusive extracts tax from the price", () => {
+    const inv = computeInvoice(
+      [{ unitPricePaise: 11800, gstRateBp: 1800, quantity: 1 }],
+      { pricesIncludeGst: true, intraState: true },
+    );
+    expect(inv.taxableValuePaise).toBe(10000);
+    expect(inv.cgstPaise + inv.sgstPaise).toBe(1800);
+    expect(inv.totalPaise).toBe(11800);
   });
 });

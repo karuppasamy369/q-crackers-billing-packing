@@ -31,6 +31,7 @@ export async function createUserAction(
       name: formData.get("name"),
       email: formData.get("email"),
       role: formData.get("role"),
+      code: formData.get("code") || undefined,
     });
     revalidatePath("/app/staff");
     return {

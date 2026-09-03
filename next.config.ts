@@ -53,6 +53,9 @@ const nextConfig: NextConfig = {
     // (the app caps images at STORAGE_MAX_IMAGE_BYTES, default 5 MB).
     serverActions: { bodySizeLimit: "6mb" },
   },
+  // @react-pdf/renderer (bill PDFs) must not be bundled — it loads fonts and
+  // uses Node internals at runtime.
+  serverExternalPackages: ["@react-pdf/renderer"],
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

@@ -34,15 +34,20 @@ function actorFrom(auth: AuthContext): AuditActor {
 async function nextUserCode(role: RoleKey): Promise<string> {
   const prefix = role === "PARTNER" ? "P" : "S";
   const existing = await db.user.findMany({
-    where: { code: { startsWith: prefix } },
+    where: { role: { key: role } },
     select: { code: true },
   });
-  let max = 0;
+  // Partner codes are usually set explicitly (PK / PSR / KA). Fall back to a
+  // numbered code, taking the highest existing `<prefix><n>` plus one, and at
+  // least (count + 1) so we never collide.
+  let maxNum = 0;
   for (const { code } of existing) {
-    const n = Number.parseInt(code.slice(prefix.length), 10);
-    if (Number.isFinite(n) && n > max) max = n;
+    if (code.startsWith(prefix)) {
+      const n = Number.parseInt(code.slice(prefix.length), 10);
+      if (Number.isFinite(n) && n > maxNum) maxNum = n;
+    }
   }
-  return `${prefix}${max + 1}`;
+  return `${prefix}${Math.max(maxNum, existing.length) + 1}`;
 }
 
 export async function listUsers() {
@@ -103,10 +108,20 @@ export async function createUser(
   const temporaryPassword = generateTemporaryPassword();
   const passwordHash = await hashPassword(temporaryPassword);
 
+  const explicitCode = input.code && input.code.length > 0 ? input.code : null;
+  if (explicitCode) {
+    const codeTaken = await db.user.findUnique({
+      where: { code: explicitCode },
+    });
+    if (codeTaken) {
+      throw new ValidationError(`Code "${explicitCode}" is already in use.`);
+    }
+  }
+
   // Retry once on the (unlikely) race for the same generated code.
   let created;
   for (let attempt = 0; attempt < 2; attempt++) {
-    const code = await nextUserCode(input.role);
+    const code = explicitCode ?? (await nextUserCode(input.role));
     try {
       created = await db.user.create({
         data: {
@@ -121,7 +136,7 @@ export async function createUser(
       break;
     } catch (e) {
       const err = e as Prisma.PrismaClientKnownRequestError;
-      if (err.code === "P2002" && attempt === 0) continue;
+      if (err.code === "P2002" && attempt === 0 && !explicitCode) continue;
       throw e;
     }
   }

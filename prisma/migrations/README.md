@@ -31,3 +31,4 @@ developer's machine at apply time.
 | `20260903000000_init`               | RBAC, users, sessions, audit_logs (+ append-only trigger) |
 | `20260903090000_phase2_catalogue`   | settings, categories, products, product_images, inventory, inventory_movements (+ CHECK constraints, one-primary-image index) |
 | `20260903120000_phase3_orders`      | customers, orders, order_items, order_status_history (+ money/consistency CHECK constraints) |
+| `20260904090000_phase4_billing`     | bills, bill_items, bill_sequences (+ number/GST/consistency CHECK constraints); renames partner login codes P1→PK, P2→PSR, P3→KA |

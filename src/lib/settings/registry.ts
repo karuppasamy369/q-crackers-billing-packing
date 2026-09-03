@@ -235,11 +235,15 @@ export const SETTINGS = {
       .string()
       .trim()
       .toUpperCase()
-      .regex(/^P[1-9][0-9]*$/, "Must be a partner code like P1."),
-    default: "P1",
+      .regex(
+        /^[A-Z][A-Z0-9]{1,9}$/,
+        "Must be a login code (letters/digits), e.g. PK.",
+      ),
+    default: "PK",
     public: false,
     group: "Billing",
     label: "House partner code for auto-generated online-order bills",
+    help: "Online orders are billed under this login's number series.",
     input: "text",
   } satisfies SettingDef<string>,
 } as const;

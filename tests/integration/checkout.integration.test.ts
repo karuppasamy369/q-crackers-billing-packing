@@ -65,7 +65,7 @@ d("Phase 3 — cart quote & checkout", () => {
     _resetRateLimits();
     logout();
     // GST-exclusive, flat ₹40 shipping, TN-only serviceable.
-    await loginAs(prisma, "P1");
+    await loginAs(prisma, "PK");
     await updateSettings({
       "tax.pricesIncludeGst": false,
       "shipping.mode": "flat",
