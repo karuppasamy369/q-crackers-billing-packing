@@ -60,6 +60,27 @@ in Phase 1, ⏳ = designed, lands in a later phase.
 | Payment verification (signature/amount/idempotency) | ⏳     | Phase 5                                        |
 | Secure tracking tokens                              | ⏳     | Phase 7 (same primitive as `tokens.ts`)        |
 
+## Catalogue & storage (Phase 2)
+
+| Control                                                | Status | Where                                                                                                  |
+| ------------------------------------------------------ | ------ | ------------------------------------------------------------------------------------------------------ |
+| Staff cannot create/edit/delete products or categories | ✅     | `products.manage` — enforced in every service method (integration-tested → 403)                        |
+| Staff cannot change prices                             | ✅     | `prices.manage` gates `updateProductPrice` separately                                                  |
+| Staff cannot adjust stock                              | ✅     | `inventory.adjust` gates `adjustStock`                                                                 |
+| Staff cannot change settings                           | ✅     | `settings.manage` gates `updateSettings`                                                               |
+| Product images stored **private** by default           | ✅     | filesystem driver writes outside webroot; Supabase bucket is private; served only via `/api/media/...` |
+| Storage credentials never sent to the browser          | ✅     | `SUPABASE_SERVICE_ROLE_KEY` is server-only; never `NEXT_PUBLIC_`                                       |
+| Image uploads validated by magic bytes + size cap      | ✅     | `src/lib/image-validation.ts` (unit + integration tested); content-type/filename not trusted           |
+| Media route enforces product visibility                | ✅     | published product → public; otherwise `products.view` required (integration-tested)                    |
+| Storefront never exposes internal fields               | ✅     | `storefront-service` projects to a safe shape — no SKU, stock, cost or flags (integration-tested)      |
+| Hidden / inactive products never reachable publicly    | ✅     | every public query filters `isVisibleOnline && isActive` (+ active category)                           |
+| Money stored as integer paise, non-negative            | ✅     | `Int` columns + `CHECK` constraints in the migration                                                   |
+| Stock cannot go negative / below reserved              | ✅     | service check + `SELECT … FOR UPDATE` + DB `CHECK`                                                     |
+| Stock changes recorded in an append ledger             | ✅     | `inventory_movements` (balance-after ledger) + audit log                                               |
+| Catalogue & settings changes audit-logged              | ✅     | `category.*`, `product.*`, `inventory.*`, `settings.update`                                            |
+| Server Action body size bounded                        | ✅     | `serverActions.bodySizeLimit: "6mb"` (image uploads)                                                   |
+| `noindex` on console / login; storefront indexable     | ✅     | route-segment `metadata.robots`                                                                        |
+
 ## Known Phase 1 limitations
 
 - Rate limiting is per-process. On multi-instance hosting it is a soft layer;

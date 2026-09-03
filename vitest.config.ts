@@ -18,6 +18,9 @@ export default defineConfig({
     globals: true,
     include: ["src/**/*.{test,spec}.ts", "tests/**/*.{test,spec}.ts"],
     setupFiles: ["tests/setup.ts"],
+    // Integration specs share one database; run test files serially so they
+    // don't race. The whole suite is a couple of seconds, so this costs nothing.
+    fileParallelism: false,
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],

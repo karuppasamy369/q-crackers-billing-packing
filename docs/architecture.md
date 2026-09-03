@@ -75,21 +75,28 @@ RETURNING last_number;
 
 Atomic, race-safe, per-login series. Cancelled bills keep their number.
 
-## Data model — Phase 1 (implemented)
+## Data model — implemented (Phases 1–2)
 
-`roles`, `permissions`, `role_permissions`, `user_permissions`, `users`,
-`sessions`, `audit_logs`. See `prisma/schema.prisma`.
+Phase 1: `roles`, `permissions`, `role_permissions`, `user_permissions`,
+`users`, `sessions`, `audit_logs` (DB trigger rejects UPDATE/DELETE).
 
-`audit_logs` has a DB trigger rejecting UPDATE and DELETE.
+Phase 2: `settings` (typed key/value — registry in
+`src/lib/settings/registry.ts`), `categories`, `products`, `product_images`,
+`inventory`, `inventory_movements`. Money is `Int` paise; GST rate is `Int`
+basis points; `CHECK` constraints enforce non-negativity, and a partial unique
+index enforces one primary image per product.
+
+Storage: `StorageProvider` interface with a `filesystem` driver (dev) and a
+private-bucket `supabase` driver. Product images are served only through
+`/api/media/product-images/[id]`, which allows public reads for published
+products and requires `products.view` otherwise.
 
 ## Data model — later phases (planned)
 
-`categories`, `products`, `product_images`, `inventory`,
-`inventory_movements`, `customers`, `orders`, `order_items`,
-`order_status_history`, `payments`, `payment_webhook_events`, `bills`,
-`bill_sequences`, `bookings`, `lr_documents`, `tracking_tokens`,
-`tracking_events`, `notification_outbox`, `notification_receipts`, `reviews`,
-`settings`.
+`customers`, `orders`, `order_items`, `order_status_history`, `payments`,
+`payment_webhook_events`, `bills`, `bill_sequences`, `bookings`,
+`lr_documents`, `tracking_tokens`, `tracking_events`, `notification_outbox`,
+`notification_receipts`, `reviews`.
 
 ## Sessions
 

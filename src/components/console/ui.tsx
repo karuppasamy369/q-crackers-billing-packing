@@ -48,18 +48,12 @@ export function Forbidden() {
   );
 }
 
-export function ComingSoon({
-  module,
-  phase,
-}: {
-  module: string;
-  phase: number;
-}) {
+export function ComingSoon({ module }: { module: string }) {
   return (
     <Card>
       <h2 className="text-sm font-semibold text-gray-900">{module}</h2>
       <p className="mt-1 text-sm text-gray-500">
-        You have permission to use this module. It is delivered in phase {phase}{" "}
+        You have permission to use this module. It is delivered in a later phase
         of the build and is not available yet.
       </p>
     </Card>

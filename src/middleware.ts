@@ -9,6 +9,9 @@ import { SESSION_COOKIE } from "@/lib/auth/cookie";
  * session valid, is the user active, do they hold the required permission —
  * happens server-side in the console layout and in every Server Action via
  * `requireAuth` / `requirePermission`.
+ *
+ * It also stamps `x-pathname` so server components (e.g. the storefront
+ * language switcher) can return the visitor to the same page.
  */
 const PROTECTED_PREFIXES = ["/app"];
 
@@ -34,9 +37,12 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  return NextResponse.next();
+  const res = NextResponse.next();
+  res.headers.set("x-pathname", pathname + req.nextUrl.search);
+  return res;
 }
 
 export const config = {
-  matcher: ["/app/:path*", "/login"],
+  // Everything except Next internals and static assets.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.[\\w]+$).*)"],
 };

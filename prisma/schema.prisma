@@ -35,6 +35,17 @@ enum PermissionEffect {
   DENY
 }
 
+/// Why an inventory quantity changed. Phase 2 uses RESTOCK and ADJUSTMENT;
+/// the order-driven reasons are wired up in later phases.
+enum InventoryMovementReason {
+  RESTOCK
+  ADJUSTMENT
+  RESERVE
+  RELEASE
+  SALE
+  RETURN
+}
+
 // ---------------------------------------------------------------------------
 // RBAC
 // ---------------------------------------------------------------------------
@@ -64,8 +75,8 @@ model Permission {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  roles           RolePermission[]
-  userOverrides   UserPermission[]
+  roles         RolePermission[]
+  userOverrides UserPermission[]
 
   @@map("permissions")
 }
@@ -130,32 +141,34 @@ model User {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  role                 Role             @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  sessions             Session[]
-  permissionOverrides  UserPermission[] @relation("UserPermissionTarget")
-  authoredOverrides    UserPermission[] @relation("UserPermissionAuthor")
-  auditLogs            AuditLog[]       @relation("AuditActor")
-  revokedSessions      Session[]        @relation("SessionRevoker")
+  role                Role                @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  sessions            Session[]
+  permissionOverrides UserPermission[]    @relation("UserPermissionTarget")
+  authoredOverrides   UserPermission[]    @relation("UserPermissionAuthor")
+  auditLogs           AuditLog[]          @relation("AuditActor")
+  revokedSessions     Session[]           @relation("SessionRevoker")
+  settingsEdited      Setting[]           @relation("SettingEditor")
+  inventoryMovements  InventoryMovement[] @relation("InventoryMovementAuthor")
 
   @@index([roleId])
   @@map("users")
 }
 
 model Session {
-  id         String    @id @default(uuid()) @db.Uuid
-  userId     String    @db.Uuid
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @db.Uuid
   /// SHA-256 hex of the opaque session token. The raw token only ever lives
   /// in the client cookie — it is never stored.
-  tokenHash  String    @unique
+  tokenHash         String    @unique
   /// Absolute expiry. Idle renewal extends this up to the absolute cap.
-  expiresAt  DateTime
+  expiresAt         DateTime
   absoluteExpiresAt DateTime
-  createdAt  DateTime  @default(now())
-  lastUsedAt DateTime  @default(now())
-  ip         String?
-  userAgent  String?
-  revokedAt   DateTime?
-  revokedById String?  @db.Uuid
+  createdAt         DateTime  @default(now())
+  lastUsedAt        DateTime  @default(now())
+  ip                String?
+  userAgent         String?
+  revokedAt         DateTime?
+  revokedById       String?   @db.Uuid
 
   user      User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   revokedBy User? @relation("SessionRevoker", fields: [revokedById], references: [id], onDelete: SetNull)
@@ -195,4 +208,144 @@ model AuditLog {
   @@index([action])
   @@index([entityType, entityId])
   @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Business settings — a typed key/value store. Keys, schemas, defaults and
+// public visibility live in src/lib/settings/registry.ts.
+// ---------------------------------------------------------------------------
+
+model Setting {
+  key         String   @id
+  value       Json
+  updatedById String?  @db.Uuid
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  updatedBy User? @relation("SettingEditor", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("settings")
+}
+
+// ---------------------------------------------------------------------------
+// Catalogue: categories, products, images
+// ---------------------------------------------------------------------------
+
+model Category {
+  id              String   @id @default(uuid()) @db.Uuid
+  name            String
+  /// URL-safe unique identifier used in storefront links.
+  slug            String   @unique
+  description     String?
+  /// Private storage key for the category banner image (nullable).
+  imageStorageKey String?
+  sortOrder       Int      @default(0)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  products Product[]
+
+  @@index([isActive, sortOrder])
+  @@map("categories")
+}
+
+model Product {
+  id          String  @id @default(uuid()) @db.Uuid
+  /// Internal stock-keeping unit — unique, case-insensitive by convention.
+  sku         String  @unique
+  name        String
+  slug        String  @unique
+  categoryId  String  @db.Uuid
+  description String?
+
+  /// All money is integer paise. price is what the customer pays;
+  /// mrp is the optional "list price" shown struck-through.
+  pricePaise Int
+  mrpPaise   Int?
+
+  /// GST is not hard-coded: rate is stored per product in basis points
+  /// (1800 = 18.00%). HSN code for the tax invoice. Whether the stored
+  /// price is inclusive of GST is a business setting, not a product field.
+  hsnCode   String?
+  gstRateBp Int     @default(0)
+
+  /// Shipping inputs kept ready for weight-based rules (Phase 3+).
+  weightGrams Int?
+
+  /// isActive = sellable at all (internal + online).
+  /// isVisibleOnline = shown in the public storefront (implies isActive).
+  isActive        Boolean @default(true)
+  isVisibleOnline Boolean @default(false)
+  sortOrder       Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  category  Category            @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  images    ProductImage[]
+  inventory Inventory?
+  movements InventoryMovement[]
+
+  @@index([categoryId])
+  @@index([isVisibleOnline, isActive])
+  @@index([isActive, sortOrder])
+  @@map("products")
+}
+
+model ProductImage {
+  id          String   @id @default(uuid()) @db.Uuid
+  productId   String   @db.Uuid
+  /// Random, unguessable key inside a PRIVATE storage bucket.
+  storageKey  String   @unique
+  altText     String?
+  contentType String
+  sizeBytes   Int
+  width       Int?
+  height      Int?
+  sortOrder   Int      @default(0)
+  isPrimary   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, sortOrder])
+  // At most one primary image per product (enforced by a partial unique index
+  // added in the migration).
+  @@map("product_images")
+}
+
+model Inventory {
+  productId        String   @id @db.Uuid
+  quantityOnHand   Int      @default(0)
+  quantityReserved Int      @default(0)
+  reorderLevel     Int      @default(0)
+  updatedAt        DateTime @updatedAt
+  createdAt        DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("inventory")
+}
+
+model InventoryMovement {
+  id           String                  @id @default(uuid()) @db.Uuid
+  productId    String                  @db.Uuid
+  /// Signed delta applied to quantityOnHand (e.g. +50 restock, -3 correction).
+  changeQty    Int
+  /// quantityOnHand immediately after this movement — a running ledger.
+  balanceAfter Int
+  reason       InventoryMovementReason
+  note         String?
+  /// Optional link to whatever caused the movement (e.g. an order later).
+  refType      String?
+  refId        String?
+  createdById  String?                 @db.Uuid
+  createdAt    DateTime                @default(now())
+
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdBy User?   @relation("InventoryMovementAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([productId, createdAt])
+  @@map("inventory_movements")
 }

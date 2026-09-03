@@ -19,7 +19,8 @@ export type AuditInput = {
   summary: string;
   entityType?: string;
   entityId?: string;
-  details?: Prisma.InputJsonValue;
+  /** Any JSON-serialisable value. Sensitive keys are redacted before storage. */
+  details?: unknown;
 };
 
 type DbClient = PrismaClient | Prisma.TransactionClient;

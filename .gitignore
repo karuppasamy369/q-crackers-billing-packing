@@ -19,6 +19,9 @@ next-env.d.ts
 # Generated Prisma client — recreated by `prisma generate` (postinstall).
 /src/generated
 
+# local object storage (filesystem storage driver)
+/.storage
+
 # env files (NEVER commit secrets)
 .env
 .env.local

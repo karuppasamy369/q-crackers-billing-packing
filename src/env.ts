@@ -25,6 +25,22 @@ const runtimeSchema = z.object({
     .default(168),
   LOGIN_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
   LOGIN_LOCKOUT_MINUTES: z.coerce.number().int().positive().default(15),
+
+  // --- Object storage (product images now; LR PDFs in Phase 8) -----------
+  // "filesystem" keeps files in a local, non-public directory for dev.
+  // "supabase" uses a PRIVATE Supabase Storage bucket in staging/production.
+  STORAGE_DRIVER: z.enum(["filesystem", "supabase"]).default("filesystem"),
+  STORAGE_FS_DIR: z.string().min(1).default(".storage"),
+  STORAGE_MAX_IMAGE_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(5 * 1024 * 1024),
+  SUPABASE_URL: z.string().min(1).optional(),
+  // Service-role key — SERVER ONLY. Never prefixed NEXT_PUBLIC, never sent to
+  // the browser.
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
+  SUPABASE_STORAGE_BUCKET: z.string().min(1).default("qc-media"),
 });
 
 type Env = z.infer<typeof runtimeSchema>;
@@ -41,12 +57,24 @@ function loadEnv(): Env {
   }
 
   const parsed = runtimeSchema.safeParse(source);
-  if (parsed.success) return parsed.data;
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)
+      .join("\n");
+    throw new Error(`Invalid environment configuration:\n${issues}`);
+  }
 
-  const issues = parsed.error.issues
-    .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)
-    .join("\n");
-  throw new Error(`Invalid environment configuration:\n${issues}`);
+  if (
+    !isBuildPhase &&
+    parsed.data.STORAGE_DRIVER === "supabase" &&
+    (!parsed.data.SUPABASE_URL || !parsed.data.SUPABASE_SERVICE_ROLE_KEY)
+  ) {
+    throw new Error(
+      "STORAGE_DRIVER=supabase requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.",
+    );
+  }
+
+  return parsed.data;
 }
 
 export const env: Env = loadEnv();

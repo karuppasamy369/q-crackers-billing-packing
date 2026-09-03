@@ -9,8 +9,8 @@
  *   TEST_DATABASE_URL=postgresql://qcrackers:qcrackers@localhost:5432/qcrackers \
  *     npx prisma migrate deploy && npm run db:seed && npm test
  */
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { PrismaClient } from "@/generated/prisma";
+import { describe, it, expect } from "vitest";
+import { db as prisma, TEST_DB } from "./_context";
 import {
   resolveEffectivePermissions,
   type PermissionOverride,
@@ -18,10 +18,7 @@ import {
 import type { PermissionKey, RoleKey } from "@/lib/rbac/permissions";
 import { PERMISSION_KEYS } from "@/lib/rbac/permissions";
 
-const TEST_DB = process.env.TEST_DATABASE_URL;
 const d = TEST_DB ? describe : describe.skip;
-
-let prisma: PrismaClient;
 
 async function effectivePermissionsFor(
   code: string,
@@ -51,14 +48,6 @@ async function effectivePermissionsFor(
 }
 
 d("schema + seed", () => {
-  beforeAll(async () => {
-    prisma = new PrismaClient({ datasourceUrl: TEST_DB });
-    await prisma.$connect();
-  });
-  afterAll(async () => {
-    await prisma?.$disconnect();
-  });
-
   it("creates the five internal accounts with the right codes and roles", async () => {
     const users = await prisma.user.findMany({
       include: { role: true },
@@ -116,26 +105,13 @@ d("schema + seed", () => {
   });
 
   it("re-running the seed is idempotent (no duplicate users/permissions)", async () => {
-    const [users, perms, roles] = await Promise.all([
-      prisma.user.count(),
-      prisma.permission.count(),
-      prisma.role.count(),
-    ]);
-    expect(users).toBe(5);
-    expect(perms).toBe(PERMISSION_KEYS.length);
-    expect(roles).toBe(2);
+    expect(await prisma.user.count()).toBe(5);
+    expect(await prisma.permission.count()).toBe(PERMISSION_KEYS.length);
+    expect(await prisma.role.count()).toBe(2);
   });
 });
 
 d("audit_logs is append-only", () => {
-  beforeAll(async () => {
-    prisma = prisma ?? new PrismaClient({ datasourceUrl: TEST_DB });
-    await prisma.$connect();
-  });
-  afterAll(async () => {
-    await prisma?.$disconnect();
-  });
-
   it("allows INSERT but rejects UPDATE and DELETE at the database level", async () => {
     const row = await prisma.auditLog.create({
       data: {

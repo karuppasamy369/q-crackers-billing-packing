@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -5,6 +6,11 @@ import { getCurrentAuth } from "@/server/auth/session";
 import { NAV_ITEMS } from "@/lib/console/nav";
 import { ChangePasswordForm } from "./account/change-password-form";
 import { logoutAction } from "./account/actions";
+
+export const metadata: Metadata = {
+  title: "Q Crackers — Console",
+  robots: { index: false, follow: false },
+};
 
 export default async function ConsoleLayout({
   children,
@@ -86,10 +92,8 @@ export default async function ConsoleLayout({
                   className="flex items-center justify-between rounded-md px-3 py-2 text-gray-700 hover:bg-gray-100"
                 >
                   <span>{item.label}</span>
-                  {item.phase > 1 ? (
-                    <span className="text-[10px] text-gray-400">
-                      P{item.phase}
-                    </span>
+                  {!item.available ? (
+                    <span className="text-[10px] text-gray-400">soon</span>
                   ) : null}
                 </Link>
               </li>

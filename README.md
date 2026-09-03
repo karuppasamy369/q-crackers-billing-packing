@@ -4,10 +4,17 @@ Production web application for the Q Crackers fireworks business: a public
 storefront plus an internal operations console (billing, booking, parcel
 tracking).
 
-**Current status:** Phase 0 + Phase 1 complete — project foundation,
-authentication, roles & permissions (RBAC), database-backed sessions, and an
-append-only audit log. Later phases (catalogue, checkout, payment, billing,
-booking, tracking, WhatsApp) are not built yet.
+**Current status:** Phases 0–2 complete.
+
+- **Phase 0/1** — foundation, authentication, roles & permissions (RBAC),
+  database-backed sessions, append-only audit log.
+- **Phase 2** — catalogue: categories, products, pricing, product images
+  (private storage), inventory with a movement ledger, business settings, and a
+  public English/Tamil storefront (product listing, category filter, product
+  detail).
+
+Later phases (checkout, payment, billing, booking, tracking, WhatsApp) are not
+built yet.
 
 ---
 
@@ -65,30 +72,39 @@ The seed prints **temporary passwords once**. Each account must set a new
 password on first sign-in. To use fixed passwords instead, set
 `SEED_PARTNER1_PASSWORD` etc. in `.env` before seeding.
 
+`.env` also sets `SEED_SAMPLE_CATALOGUE=1`, so the seed adds a small demo
+catalogue (two categories, four products, stock) — remove it for a clean
+database.
+
 ### 4. Run
 
 ```bash
 npm run dev                     # http://localhost:3000
 ```
 
-Sign in at `/login`. `/` redirects to the console or the login page.
+- `/` — public storefront (product listing, category filter, product detail).
+- `/login` → `/app/*` — internal console.
+
+Product images use the `filesystem` storage driver in dev (files under
+`.storage/`, git-ignored, served only through `/api/media/...`). Staging and
+production set `STORAGE_DRIVER=supabase` with a **private** bucket.
 
 ---
 
 ## Scripts
 
-| Script                   | Purpose                                                  |
-| ------------------------ | -------------------------------------------------------- |
-| `npm run dev`            | Dev server (Turbopack)                                   |
-| `npm run build`          | `prisma generate` + production build                     |
-| `npm run start`          | Serve the production build                               |
-| `npm run typecheck`      | `tsc --noEmit`                                           |
-| `npm run lint`           | ESLint (via `next lint`)                                 |
-| `npm run test`           | Vitest — unit always, integration if `TEST_DATABASE_URL` |
-| `npm run check`          | typecheck + lint + test                                  |
-| `npm run prisma:migrate` | Create/apply a migration in dev                          |
-| `npm run prisma:deploy`  | Apply migrations (staging/prod)                          |
-| `npm run db:seed`        | Seed roles, permissions, and the 5 accounts              |
+| Script                               | Purpose                                                    |
+| ------------------------------------ | ---------------------------------------------------------- |
+| `npm run dev`                        | Dev server (Turbopack)                                     |
+| `npm run build`                      | `prisma generate` + production build                       |
+| `npm run start`                      | Serve the production build                                 |
+| `npm run typecheck`                  | `tsc --noEmit`                                             |
+| `npm run lint`                       | ESLint (via `next lint`)                                   |
+| `npm run test`                       | Vitest — unit always, integration if `TEST_DATABASE_URL`   |
+| `npm run check`                      | typecheck + lint + test                                    |
+| `npm run prisma:migrate`             | Apply pending migrations (`prisma migrate deploy`)         |
+| `npm run db:migration:new -- <name>` | Author a new migration (see `prisma/migrations/README.md`) |
+| `npm run db:seed`                    | Seed roles, permissions, accounts, settings                |
 
 ---
 
@@ -110,20 +126,27 @@ git-ignored except `.env.example`.
 ## Project layout
 
 ```
-prisma/                 schema, migrations, seed
+prisma/                 schema, migrations (authored + committed), seed
 src/
   app/
+    (storefront)/        public site — no auth (/, /products/[slug])
     (console)/           internal console — auth-gated, RBAC-enforced
     login/               sign-in
     api/health/          liveness + DB probe
+    api/media/           authorised product-image streaming (private storage)
   server/                server-only code
     auth/                password hashing, session lifecycle, tokens
     rbac/                 authorization guards (requirePermission, …)
     services/            business logic — the only place that touches the DB
-    http/                typed errors, request context
+    integrations/storage/ StorageProvider interface + filesystem/Supabase
+    storefront/          per-request locale + public settings
+    http/                typed errors, request context, action-result
   lib/
     rbac/                permission catalogue + pure resolver (testable)
+    settings/            settings registry (keys, schemas, defaults, public flag)
+    i18n/                English + Tamil dictionaries
     validation/          Zod schemas
+    money.ts             integer-paise helpers
     …
   middleware.ts          edge cookie gate (UX only; real checks are server-side)
 docs/                    architecture, decisions, security, runbook

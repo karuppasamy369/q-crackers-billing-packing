@@ -2,9 +2,11 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Q Crackers — Internal Console",
-  description: "Internal operations console for Q Crackers.",
-  robots: { index: false, follow: false },
+  title: {
+    default: "Q Crackers",
+    template: "%s · Q Crackers",
+  },
+  description: "Fireworks and crackers from Q Crackers.",
 };
 
 export default function RootLayout({

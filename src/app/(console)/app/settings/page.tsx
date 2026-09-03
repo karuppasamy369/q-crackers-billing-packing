@@ -1,8 +1,21 @@
 import { requireAuth, hasPermission } from "@/server/rbac/authorize";
-import { ComingSoon, Forbidden } from "@/components/console/ui";
+import { getSettingsForConsole } from "@/server/services/settings-service";
+import { PageHeader, Forbidden } from "@/components/console/ui";
+import { SettingsForm } from "./settings-form";
 
 export default async function SettingsPage() {
   const auth = await requireAuth();
   if (!hasPermission(auth, "settings.manage")) return <Forbidden />;
-  return <ComingSoon module="Settings" phase={2} />;
+
+  const settings = await getSettingsForConsole();
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      <PageHeader
+        title="Settings"
+        description="Business, tax, shipping, fulfilment and storefront configuration. Changes are audit-logged."
+      />
+      <SettingsForm settings={settings} />
+    </div>
+  );
 }

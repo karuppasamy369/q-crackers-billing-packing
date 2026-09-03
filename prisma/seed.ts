@@ -8,6 +8,9 @@
  * Run with:  npm run db:seed
  */
 import "dotenv/config";
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { PrismaClient } from "../src/generated/prisma/index.js";
 import {
   hashPassword,
@@ -19,6 +22,7 @@ import {
   STAFF_DEFAULT_PERMISSIONS,
   partnerPermissions,
 } from "../src/lib/rbac/permissions";
+import { SETTINGS, SETTING_KEYS } from "../src/lib/settings/registry";
 
 const prisma = new PrismaClient();
 
@@ -176,6 +180,133 @@ async function seedUsers(roleIdByKey: Record<"PARTNER" | "STAFF", string>) {
   return created;
 }
 
+async function seedSettings() {
+  let created = 0;
+  for (const key of SETTING_KEYS) {
+    const existing = await prisma.setting.findUnique({ where: { key } });
+    if (!existing) {
+      await prisma.setting.create({
+        data: { key, value: SETTINGS[key].default as never },
+      });
+      created++;
+    }
+  }
+  return created;
+}
+
+// A valid 1x1 PNG — lets sample products be published to the storefront.
+const SAMPLE_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+async function writeSampleImage(): Promise<string | null> {
+  if ((process.env.STORAGE_DRIVER ?? "filesystem") !== "filesystem")
+    return null;
+  const root = path.resolve(
+    process.cwd(),
+    process.env.STORAGE_FS_DIR || ".storage",
+  );
+  const key = `product-images/${randomUUID()}.png`;
+  const file = path.join(root, key);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, SAMPLE_PNG);
+  await fs.writeFile(file + ".contenttype", "image/png", "utf8");
+  return key;
+}
+
+async function seedSampleCatalogue() {
+  if (process.env.SEED_SAMPLE_CATALOGUE !== "1") return;
+  if ((await prisma.product.count()) > 0) {
+    console.info("  • sample catalogue skipped (products already exist)");
+    return;
+  }
+
+  const sound = await prisma.category.create({
+    data: { name: "Sound Crackers", slug: "sound-crackers", sortOrder: 1 },
+  });
+  const sparklers = await prisma.category.create({
+    data: { name: "Sparklers", slug: "sparklers", sortOrder: 2 },
+  });
+
+  const items = [
+    {
+      sku: "SND-1000",
+      name: "1000 Wala",
+      cat: sound.id,
+      price: 45000,
+      mrp: 60000,
+      qty: 120,
+    },
+    {
+      sku: "SND-BABY",
+      name: "Baby Bijili (Box of 50)",
+      cat: sound.id,
+      price: 9000,
+      mrp: 12000,
+      qty: 300,
+    },
+    {
+      sku: "SPK-15",
+      name: "15 cm Sparklers (Pkt of 10)",
+      cat: sparklers.id,
+      price: 3500,
+      mrp: 5000,
+      qty: 500,
+    },
+    {
+      sku: "SPK-30",
+      name: "30 cm Colour Sparklers (Pkt of 10)",
+      cat: sparklers.id,
+      price: 6000,
+      mrp: 8000,
+      qty: 0,
+    },
+  ];
+
+  for (const it of items) {
+    const imageKey = await writeSampleImage();
+    const product = await prisma.product.create({
+      data: {
+        sku: it.sku,
+        name: it.name,
+        slug: it.sku.toLowerCase(),
+        categoryId: it.cat,
+        description: `${it.name} — demo product created by the seed.`,
+        pricePaise: it.price,
+        mrpPaise: it.mrp,
+        gstRateBp: 1800,
+        isActive: true,
+        isVisibleOnline: Boolean(imageKey) && it.qty > 0,
+        inventory: { create: { quantityOnHand: it.qty, reorderLevel: 20 } },
+      },
+    });
+    if (imageKey) {
+      await prisma.productImage.create({
+        data: {
+          productId: product.id,
+          storageKey: imageKey,
+          contentType: "image/png",
+          sizeBytes: SAMPLE_PNG.length,
+          isPrimary: true,
+        },
+      });
+    }
+    if (it.qty > 0) {
+      await prisma.inventoryMovement.create({
+        data: {
+          productId: product.id,
+          changeQty: it.qty,
+          balanceAfter: it.qty,
+          reason: "RESTOCK",
+          note: "Initial demo stock",
+        },
+      });
+    }
+  }
+  console.info(`  • sample catalogue: 2 categories, ${items.length} products`);
+}
+
 async function main() {
   console.info("Seeding Q Crackers …");
 
@@ -199,12 +330,20 @@ async function main() {
 
   const created = await seedUsers({ PARTNER: partner.id, STAFF: staff.id });
 
+  const settingsCreated = await seedSettings();
+  console.info(`  • settings: ${settingsCreated} default row(s) created`);
+
+  await seedSampleCatalogue();
+
   await prisma.auditLog.create({
     data: {
       actorRole: "SYSTEM",
       action: "system.seed",
       summary: `Seed run — ${created.length} account(s) created`,
-      details: { createdCodes: created.map((c) => c.code) },
+      details: {
+        createdCodes: created.map((c) => c.code),
+        settingsCreated,
+      },
     },
   });
 

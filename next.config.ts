@@ -48,6 +48,11 @@ const nextConfig: NextConfig = {
   // Fail the production build on type or lint errors — never ship broken code.
   typescript: { ignoreBuildErrors: false },
   eslint: { ignoreDuringBuilds: false },
+  experimental: {
+    // Product image uploads go through Server Actions; allow up to ~6 MB
+    // (the app caps images at STORAGE_MAX_IMAGE_BYTES, default 5 MB).
+    serverActions: { bodySizeLimit: "6mb" },
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

@@ -5,8 +5,8 @@ export type NavItem = {
   href: string;
   /** The permission required to see and open this module. */
   permission: PermissionKey;
-  /** Development phase that delivers the real module (1 = available now). */
-  phase: number;
+  /** False = module not built yet (placeholder page). */
+  available: boolean;
 };
 
 export const NAV_ITEMS: NavItem[] = [
@@ -14,56 +14,72 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Dashboard",
     href: "/app/dashboard",
     permission: "dashboard.view",
-    phase: 1,
+    available: true,
   },
   {
     label: "Products",
     href: "/app/products",
     permission: "products.view",
-    phase: 2,
+    available: true,
+  },
+  {
+    label: "Categories",
+    href: "/app/categories",
+    permission: "products.view",
+    available: true,
   },
   {
     label: "Inventory",
     href: "/app/inventory",
     permission: "inventory.view",
-    phase: 2,
+    available: true,
   },
-  { label: "Orders", href: "/app/orders", permission: "orders.view", phase: 3 },
+  {
+    label: "Orders",
+    href: "/app/orders",
+    permission: "orders.view",
+    available: false,
+  },
   {
     label: "Billing",
     href: "/app/billing",
     permission: "billing.view",
-    phase: 4,
+    available: false,
   },
   {
     label: "Booking",
     href: "/app/booking",
     permission: "booking.view",
-    phase: 6,
+    available: false,
   },
   {
     label: "Customers",
     href: "/app/customers",
     permission: "customers.view",
-    phase: 3,
+    available: false,
   },
   {
     label: "Reports",
     href: "/app/reports",
     permission: "reports.view",
-    phase: 10,
+    available: false,
   },
-  { label: "Staff", href: "/app/staff", permission: "staff.manage", phase: 1 },
+  {
+    label: "Staff",
+    href: "/app/staff",
+    permission: "staff.manage",
+    available: true,
+  },
   {
     label: "Settings",
     href: "/app/settings",
     permission: "settings.manage",
-    phase: 2,
+    available: true,
   },
   {
     label: "Audit log",
     href: "/app/audit",
     permission: "audit.view_own",
-    phase: 1,
+    available: true,
   },
 ];
