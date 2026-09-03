@@ -38,7 +38,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Orders",
     href: "/app/orders",
     permission: "orders.view",
-    available: false,
+    available: true,
   },
   {
     label: "Billing",

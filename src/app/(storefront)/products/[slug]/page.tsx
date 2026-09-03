@@ -6,6 +6,7 @@ import { getStorefrontContext } from "@/server/storefront/context";
 import { getPublicProduct } from "@/server/services/storefront-service";
 import { isAppError } from "@/server/http/errors";
 import { ProductImage, Price } from "@/components/storefront/product-card";
+import { AddToCart } from "@/components/storefront/add-to-cart";
 import { formatGstRateBp } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
@@ -91,6 +92,14 @@ export default async function ProductDetailPage({
             ? ` · GST ${formatGstRateBp(product.gstRateBp)}`
             : ""}
         </p>
+
+        <div className="mt-6">
+          <AddToCart
+            slug={product.slug}
+            label={t.product.addToCart}
+            addedLabel={t.product.added}
+          />
+        </div>
 
         {product.description ? (
           <div className="mt-6">

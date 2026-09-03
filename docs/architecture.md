@@ -91,10 +91,20 @@ private-bucket `supabase` driver. Product images are served only through
 `/api/media/product-images/[id]`, which allows public reads for published
 products and requires `products.view` otherwise.
 
+Phase 3: `customers`, `orders`, `order_items`, `order_status_history`.
+`CHECK` constraints keep order money non-negative and the totals internally
+consistent. The cart lives in the browser as `{ slug, quantity }` pairs only;
+`pricing-service.quoteCart` is the single server-authoritative price/tax/
+shipping calculation (shared by the cart page and checkout). `createOnlineOrder`
+runs one transaction: lock inventory rows → verify availability → reserve
+(`quantityReserved += qty`) → create order + items + status history + audit. The
+customer confirmation page is reached via a 24-byte random `orders.reference`
+(no sequential id exposed). `PaymentProvider` is the interface Phase 5's
+Razorpay adapter implements.
+
 ## Data model — later phases (planned)
 
-`customers`, `orders`, `order_items`, `order_status_history`, `payments`,
-`payment_webhook_events`, `bills`, `bill_sequences`, `bookings`,
+`payments`, `payment_webhook_events`, `bills`, `bill_sequences`, `bookings`,
 `lr_documents`, `tracking_tokens`, `tracking_events`, `notification_outbox`,
 `notification_receipts`, `reviews`.
 

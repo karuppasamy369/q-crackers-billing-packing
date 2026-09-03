@@ -20,6 +20,7 @@ type Group =
   | "Tax"
   | "Catalogue"
   | "Shipping"
+  | "Checkout"
   | "Fulfilment"
   | "Storefront"
   | "Billing";
@@ -161,6 +162,15 @@ export const SETTINGS = {
     public: true,
     group: "Shipping",
     label: "Free shipping above order value (paise, 0 = never)",
+    input: "number",
+  } satisfies SettingDef<number>,
+
+  "checkout.minOrderValuePaise": {
+    schema: nonNegInt,
+    default: 0,
+    public: true,
+    group: "Checkout",
+    label: "Minimum order value (paise, 0 = no minimum)",
     input: "number",
   } satisfies SettingDef<number>,
 

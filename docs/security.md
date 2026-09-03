@@ -81,6 +81,29 @@ in Phase 1, ⏳ = designed, lands in a later phase.
 | Server Action body size bounded                        | ✅     | `serverActions.bodySizeLimit: "6mb"` (image uploads)                                                   |
 | `noindex` on console / login; storefront indexable     | ✅     | route-segment `metadata.robots`                                                                        |
 
+## Cart & checkout (Phase 3)
+
+| Control                                                  | Status | Where                                                                                                                                                                 |
+| -------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Browser never sends prices/totals — only slug + quantity | ✅     | cart schema is `{ slug, quantity }`; `pricing-service.quoteCart` looks up everything                                                                                  |
+| All money recomputed server-side                         | ✅     | `computeOrderTotals` (unit-tested) runs for both the quote and the persisted order                                                                                    |
+| Checkout input validated with Zod                        | ✅     | `checkoutSchema` — name, Indian mobile, address, GST state code, 6-digit pincode                                                                                      |
+| Out-of-stock / hidden items cannot be ordered            | ✅     | quote marks the line unavailable; `createOnlineOrder` re-checks under `SELECT … FOR UPDATE` and aborts                                                                |
+| Stock reserved atomically at checkout                    | ✅     | one transaction: lock rows → verify availability → `quantityReserved += qty` → order + items + history + audit; `CHECK (quantityReserved <= quantityOnHand)` backstop |
+| Order totals internally consistent                       | ✅     | DB `CHECK`: `total = subtotal − discount + tax + shipping`, `lineTotal = lineSubtotal + lineTax`                                                                      |
+| Fulfilment restrictions enforced                         | ✅     | blocked pincodes + serviceable state codes from settings                                                                                                              |
+| Order creation rate-limited per connection               | ✅     | `rateLimit("order:create:<ip>", 8 / 10 min)` (per-instance; global store in Phase 10)                                                                                 |
+| Customer-facing order lookup is capability-based         | ✅     | 24-byte random `reference`; no sequential id in the URL; `getOrderByReference` returns a projection with no internal ids                                              |
+| No customer login                                        | ✅     | orders are anonymous; a `customers` row is keyed by normalised phone for history only                                                                                 |
+| Razorpay seam prepared, not trusted yet                  | ✅     | `PaymentProvider` interface documents the Phase 5 rules (signature, server-side status, amount, idempotency)                                                          |
+
+### Phase 3 limitation
+
+- Reserved stock is not yet released automatically. Orders sit in
+  `AWAITING_PAYMENT` with `holdExpiresAt` set; Phase 5 adds the release-on-fail
+  path and a sweep for expired holds, and converts the reservation into a
+  `SALE` movement on successful payment.
+
 ## Known Phase 1 limitations
 
 - Rate limiting is per-process. On multi-instance hosting it is a soft layer;

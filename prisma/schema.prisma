@@ -36,7 +36,7 @@ enum PermissionEffect {
 }
 
 /// Why an inventory quantity changed. Phase 2 uses RESTOCK and ADJUSTMENT;
-/// the order-driven reasons are wired up in later phases.
+/// Phase 3 adds RESERVE at checkout; SALE/RELEASE follow payment in Phase 5.
 enum InventoryMovementReason {
   RESTOCK
   ADJUSTMENT
@@ -44,6 +44,34 @@ enum InventoryMovementReason {
   RELEASE
   SALE
   RETURN
+}
+
+/// Order lifecycle. Phase 3 only creates orders in AWAITING_PAYMENT; the full
+/// state machine (guards, transitions) is built in Phases 5–6.
+enum OrderStatus {
+  AWAITING_PAYMENT
+  PAYMENT_FAILED
+  PAID
+  PACKED
+  PARCEL_BOOKED
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+/// Payment state, tracked separately from the order's fulfilment state.
+enum OrderPaymentStatus {
+  PENDING
+  AUTHORIZED
+  PAID
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum OrderSource {
+  ONLINE
+  INTERNAL
 }
 
 // ---------------------------------------------------------------------------
@@ -141,14 +169,15 @@ model User {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  role                Role                @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  role                Role                 @relation(fields: [roleId], references: [id], onDelete: Restrict)
   sessions            Session[]
-  permissionOverrides UserPermission[]    @relation("UserPermissionTarget")
-  authoredOverrides   UserPermission[]    @relation("UserPermissionAuthor")
-  auditLogs           AuditLog[]          @relation("AuditActor")
-  revokedSessions     Session[]           @relation("SessionRevoker")
-  settingsEdited      Setting[]           @relation("SettingEditor")
-  inventoryMovements  InventoryMovement[] @relation("InventoryMovementAuthor")
+  permissionOverrides UserPermission[]     @relation("UserPermissionTarget")
+  authoredOverrides   UserPermission[]     @relation("UserPermissionAuthor")
+  auditLogs           AuditLog[]           @relation("AuditActor")
+  revokedSessions     Session[]            @relation("SessionRevoker")
+  settingsEdited      Setting[]            @relation("SettingEditor")
+  inventoryMovements  InventoryMovement[]  @relation("InventoryMovementAuthor")
+  orderStatusChanges  OrderStatusHistory[] @relation("OrderStatusChanger")
 
   @@index([roleId])
   @@map("users")
@@ -282,10 +311,11 @@ model Product {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  category  Category            @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  images    ProductImage[]
-  inventory Inventory?
-  movements InventoryMovement[]
+  category   Category            @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  images     ProductImage[]
+  inventory  Inventory?
+  movements  InventoryMovement[]
+  orderItems OrderItem[]
 
   @@index([categoryId])
   @@index([isVisibleOnline, isActive])
@@ -348,4 +378,120 @@ model InventoryMovement {
 
   @@index([productId, createdAt])
   @@map("inventory_movements")
+}
+
+// ---------------------------------------------------------------------------
+// Customers & orders (Phase 3)
+// ---------------------------------------------------------------------------
+
+model Customer {
+  id              String   @id @default(uuid()) @db.Uuid
+  name            String
+  /// As entered.
+  phone           String
+  /// Normalised E.164 (+91XXXXXXXXXX) for lookup / dedupe.
+  phoneNormalized String
+  email           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  orders Order[]
+
+  @@index([phoneNormalized])
+  @@map("customers")
+}
+
+model Order {
+  id         String @id @default(uuid()) @db.Uuid
+  /// Unguessable random token used in the customer-facing confirmation URL.
+  /// (Phase 7 adds a separate tracking token for the tracking page.)
+  reference  String @unique
+  customerId String @db.Uuid
+
+  status        OrderStatus        @default(AWAITING_PAYMENT)
+  paymentStatus OrderPaymentStatus @default(PENDING)
+  source        OrderSource        @default(ONLINE)
+
+  // Customer + delivery snapshot (immutable once placed).
+  customerName  String
+  customerPhone String
+  customerEmail String?
+  addressLine1  String
+  addressLine2  String?
+  city          String
+  stateCode     String
+  stateName     String
+  pincode       String
+
+  // All money in integer paise.
+  subtotalPaise Int
+  discountPaise Int @default(0)
+  taxPaise      Int
+  shippingPaise Int
+  totalPaise    Int
+
+  /// Snapshot of tax.pricesIncludeGst at order time.
+  pricesIncludeGst Boolean
+  /// Snapshot of the shipping mode used.
+  shippingMode     String
+
+  /// Optimistic-lock version for later state transitions.
+  version       Int       @default(0)
+  /// Stock is reserved until this time; Phase 5 releases expired holds.
+  holdExpiresAt DateTime?
+  notes         String?
+  placedAt      DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  customer Customer             @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  items    OrderItem[]
+  history  OrderStatusHistory[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([placedAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String @id @default(uuid()) @db.Uuid
+  orderId   String @db.Uuid
+  productId String @db.Uuid
+
+  // Snapshots taken at order time.
+  sku            String
+  productName    String
+  unitPricePaise Int
+  gstRateBp      Int
+  quantity       Int
+
+  lineSubtotalPaise Int
+  lineTaxPaise      Int
+  lineTotalPaise    Int
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+model OrderStatusHistory {
+  id          String       @id @default(uuid()) @db.Uuid
+  orderId     String       @db.Uuid
+  fromStatus  OrderStatus?
+  toStatus    OrderStatus
+  /// Null actor = system / customer action.
+  changedById String?      @db.Uuid
+  reason      String?
+  createdAt   DateTime     @default(now())
+
+  order     Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  changedBy User? @relation("OrderStatusChanger", fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([orderId, createdAt])
+  @@map("order_status_history")
 }

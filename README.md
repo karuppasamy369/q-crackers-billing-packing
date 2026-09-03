@@ -4,17 +4,19 @@ Production web application for the Q Crackers fireworks business: a public
 storefront plus an internal operations console (billing, booking, parcel
 tracking).
 
-**Current status:** Phases 0–2 complete.
+**Current status:** Phases 0–3 complete.
 
 - **Phase 0/1** — foundation, authentication, roles & permissions (RBAC),
   database-backed sessions, append-only audit log.
 - **Phase 2** — catalogue: categories, products, pricing, product images
   (private storage), inventory with a movement ledger, business settings, and a
-  public English/Tamil storefront (product listing, category filter, product
-  detail).
+  public English/Tamil storefront.
+- **Phase 3** — cart (browser-side, slug + quantity only), server-authoritative
+  pricing/tax/shipping quote, checkout with customer details + fulfilment
+  checks, atomic order creation with stock reservation, order confirmation page,
+  and a read-only internal Orders view. Razorpay slots in at Phase 5.
 
-Later phases (checkout, payment, billing, booking, tracking, WhatsApp) are not
-built yet.
+Later phases (billing, payment, booking, tracking, WhatsApp) are not built yet.
 
 ---
 
