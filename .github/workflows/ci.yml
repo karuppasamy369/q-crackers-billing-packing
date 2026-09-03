@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: qcrackers
+          POSTGRES_PASSWORD: qcrackers
+          POSTGRES_DB: qcrackers_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U qcrackers"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      NODE_ENV: test
+      NEXT_TELEMETRY_DISABLED: "1"
+      DATABASE_URL: postgresql://qcrackers:qcrackers@localhost:5432/qcrackers_test?schema=public
+      DIRECT_URL: postgresql://qcrackers:qcrackers@localhost:5432/qcrackers_test?schema=public
+      TEST_DATABASE_URL: postgresql://qcrackers:qcrackers@localhost:5432/qcrackers_test?schema=public
+      # Deterministic seed credentials for CI only. Never use these values
+      # anywhere real.
+      SEED_PARTNER1_PASSWORD: Ci-Partner1-Pass-01
+      SEED_PARTNER2_PASSWORD: Ci-Partner2-Pass-02
+      SEED_PARTNER3_PASSWORD: Ci-Partner3-Pass-03
+      SEED_STAFF1_PASSWORD: Ci-Staff1-Pass-01
+      SEED_STAFF2_PASSWORD: Ci-Staff2-Pass-02
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Apply database migrations
+        run: npx prisma migrate deploy
+
+      - name: Seed database
+        run: npm run db:seed
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit + integration tests
+        run: npm run test
+
+      - name: Production build
+        run: npm run build

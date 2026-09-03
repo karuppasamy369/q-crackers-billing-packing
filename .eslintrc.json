@@ -1,0 +1,18 @@
+{
+  "extends": ["next/core-web-vitals", "next/typescript", "prettier"],
+  "rules": {
+    "@typescript-eslint/no-unused-vars": [
+      "error",
+      { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }
+    ],
+    "@typescript-eslint/no-explicit-any": "error",
+    "no-console": ["warn", { "allow": ["warn", "error", "info"] }]
+  },
+  "ignorePatterns": [
+    "node_modules/",
+    ".next/",
+    "coverage/",
+    "src/generated/",
+    "next-env.d.ts"
+  ]
+}

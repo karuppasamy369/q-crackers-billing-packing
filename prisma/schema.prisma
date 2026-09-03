@@ -1,0 +1,198 @@
+// Q Crackers — Prisma schema
+// Phase 0 / Phase 1 scope: identity, RBAC, sessions, audit.
+// Later phases (products, orders, payments, billing, booking, tracking,
+// notifications) will extend this file.
+//
+// Portability: provider is plain "postgresql". No Supabase-specific features
+// are used, so this runs on Supabase, RDS, Neon, or a self-hosted Postgres.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // DIRECT_URL is used for migrations when DATABASE_URL points at a pooler
+  // (e.g. Supabase PgBouncer). Falls back to DATABASE_URL if unset.
+  directUrl = env("DIRECT_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum RoleKey {
+  PARTNER
+  STAFF
+}
+
+/// Direction of a per-user permission override.
+/// DENY always wins over ALLOW and over the role default.
+enum PermissionEffect {
+  ALLOW
+  DENY
+}
+
+// ---------------------------------------------------------------------------
+// RBAC
+// ---------------------------------------------------------------------------
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         RoleKey  @unique
+  name        String
+  description String
+  /// System roles cannot be deleted or renamed via the app.
+  isSystem    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       User[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  /// Stable machine key, e.g. "booking.pack". Never reuse a retired key.
+  key         String   @unique
+  category    String
+  description String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  roles           RolePermission[]
+  userOverrides   UserPermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String @db.Uuid
+  permissionId String @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+/// Per-user grant or revoke on top of the role default.
+model UserPermission {
+  id           String           @id @default(uuid()) @db.Uuid
+  userId       String           @db.Uuid
+  permissionId String           @db.Uuid
+  effect       PermissionEffect
+  /// Free-text reason captured for the audit trail.
+  note         String?
+  createdById  String?          @db.Uuid
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  user       User       @relation("UserPermissionTarget", fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdBy  User?      @relation("UserPermissionAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([userId, permissionId])
+  @@index([userId])
+  @@map("user_permissions")
+}
+
+// ---------------------------------------------------------------------------
+// Users & sessions
+// ---------------------------------------------------------------------------
+
+model User {
+  id                  String    @id @default(uuid()) @db.Uuid
+  /// Immutable login code that drives bill numbering: P1, P2, P3, S1, S2, ...
+  code                String    @unique
+  name                String
+  /// Stored lower-cased; unique.
+  email               String    @unique
+  /// Argon2id hash. Never logged, never returned to the client.
+  passwordHash        String
+  roleId              String    @db.Uuid
+  isActive            Boolean   @default(true)
+  /// Forces a password change on next login (first login, or after a reset).
+  mustChangePassword  Boolean   @default(true)
+  /// Reserved for future TOTP 2FA (partners). Nullable = not enrolled.
+  totpSecret          String?
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+  lastLoginAt         DateTime?
+  passwordChangedAt   DateTime  @default(now())
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  role                 Role             @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  sessions             Session[]
+  permissionOverrides  UserPermission[] @relation("UserPermissionTarget")
+  authoredOverrides    UserPermission[] @relation("UserPermissionAuthor")
+  auditLogs            AuditLog[]       @relation("AuditActor")
+  revokedSessions      Session[]        @relation("SessionRevoker")
+
+  @@index([roleId])
+  @@map("users")
+}
+
+model Session {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  /// SHA-256 hex of the opaque session token. The raw token only ever lives
+  /// in the client cookie — it is never stored.
+  tokenHash  String    @unique
+  /// Absolute expiry. Idle renewal extends this up to the absolute cap.
+  expiresAt  DateTime
+  absoluteExpiresAt DateTime
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime  @default(now())
+  ip         String?
+  userAgent  String?
+  revokedAt   DateTime?
+  revokedById String?  @db.Uuid
+
+  user      User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  revokedBy User? @relation("SessionRevoker", fields: [revokedById], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// ---------------------------------------------------------------------------
+// Audit log — append only (enforced by a DB trigger, see migration)
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  /// Monotonic ordering key, independent of clock skew.
+  seq         BigInt   @default(autoincrement())
+  /// Null actor = system-generated action.
+  actorUserId String?  @db.Uuid
+  actorCode   String?
+  actorRole   String?
+  /// Machine key, e.g. "auth.login", "user.password_reset".
+  action      String
+  entityType  String?
+  entityId    String?
+  summary     String
+  details     Json?
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  actor User? @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([seq])
+  @@index([actorUserId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}

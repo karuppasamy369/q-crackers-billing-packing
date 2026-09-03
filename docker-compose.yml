@@ -1,0 +1,23 @@
+# Local development database only. Staging and production use managed
+# PostgreSQL (e.g. Supabase). Not for production use.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: qcrackers-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: qcrackers
+      POSTGRES_PASSWORD: qcrackers
+      POSTGRES_DB: qcrackers
+    ports:
+      - "5432:5432"
+    volumes:
+      - qcrackers-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qcrackers"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  qcrackers-db-data:
