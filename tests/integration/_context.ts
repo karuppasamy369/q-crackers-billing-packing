@@ -70,6 +70,8 @@ export function logout(): void {
 
 export async function resetCatalogue(prisma: PrismaClient): Promise<void> {
   // Order matters for FKs (bill_items/order_items/status_history cascade).
+  await prisma.lrDocument.deleteMany();
+  await prisma.booking.deleteMany();
   await prisma.bill.deleteMany();
   await prisma.billSequence.deleteMany();
   await prisma.payment.deleteMany();

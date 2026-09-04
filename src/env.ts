@@ -26,7 +26,7 @@ const runtimeSchema = z.object({
   LOGIN_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
   LOGIN_LOCKOUT_MINUTES: z.coerce.number().int().positive().default(15),
 
-  // --- Object storage (product images now; LR PDFs in Phase 8) -----------
+  // --- Object storage (product images, LR / parcel PDFs) ----------------
   // "filesystem" keeps files in a local, non-public directory for dev.
   // "supabase" uses a PRIVATE Supabase Storage bucket in staging/production.
   STORAGE_DRIVER: z.enum(["filesystem", "supabase"]).default("filesystem"),
@@ -36,6 +36,12 @@ const runtimeSchema = z.object({
     .int()
     .positive()
     .default(5 * 1024 * 1024),
+  // Upload cap for LR / parcel-booking PDFs (Phase 6 booking panel).
+  STORAGE_MAX_DOCUMENT_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(10 * 1024 * 1024),
   SUPABASE_URL: z.string().min(1).optional(),
   // Service-role key — SERVER ONLY. Never prefixed NEXT_PUBLIC, never sent to
   // the browser.

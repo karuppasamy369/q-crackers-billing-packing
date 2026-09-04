@@ -135,11 +135,28 @@ indexes enforce one live payment per order and one recorded UTR globally; a
 `ORDER_HOLD_MINUTES` raised to 1440 (manual verification takes longer than a
 gateway redirect).
 
+Phase 6: `bookings` (one per order — courier / LR number / booking date /
+parcel count / remarks, plus `packedAt`/`parcelBookedAt` and their actors),
+`lr_documents` (uploaded LR PDFs; re-upload marks the previous row
+`isCurrent = false` with `supersededAt`). A DB `CHECK` blocks a `parcelBookedAt`
+without all four mandatory courier fields; a partial unique index keeps at most
+one current LR per order. State machine: `PAID → PACKED` (`booking.pack`) →
+`PARCEL_BOOKED` (`booking.book_parcel`, four fields validated in the service and
+the DB). `booking-service` owns every transition — each writes
+`order_status_history` + `audit_logs` in one transaction. LR PDFs live in the
+private bucket (`lr-docs/`), validated by magic bytes + `%%EOF` + a
+`STORAGE_MAX_DOCUMENT_BYTES` cap, streamed only through `/api/lr/[orderId]/pdf`
+(`lr.download`, audited) or the customer's `/track/<reference>/lr-copy`
+(rate-limited, reference is the bearer capability). The customer tracking page
+`/track/<reference>` renders the live packing / dispatch timeline and shows
+"Download LR Copy" only once a current LR document exists. (Full Phase 7
+tracking — dedicated revocable tokens, `tracking_events` — still to come; Phase 6
+reuses the order's existing 24-byte random `reference`.)
+
 ## Data model — later phases (planned)
 
-`payment_webhook_events`, `bookings`, `lr_documents`,
-`tracking_tokens`, `tracking_events`, `notification_outbox`,
-`notification_receipts`, `reviews`.
+`payment_webhook_events`, `tracking_tokens`, `tracking_events`,
+`notification_outbox`, `notification_receipts`, `reviews`.
 
 ## Sessions
 

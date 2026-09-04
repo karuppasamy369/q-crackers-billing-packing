@@ -22,6 +22,7 @@ export default async function OrderDetailPage({
   const auth = await requireAuth();
   if (!hasPermission(auth, "orders.view")) return <Forbidden />;
   const canViewPayments = hasPermission(auth, "payments.view");
+  const canViewBooking = hasPermission(auth, "booking.view");
 
   const { id } = await params;
   let order;
@@ -168,6 +169,50 @@ export default async function OrderDetailPage({
               </ul>
             ) : null}
           </Card>
+
+          {["PAID", "PACKED", "PARCEL_BOOKED", "COMPLETED"].includes(
+            order.status,
+          ) ? (
+            <Card>
+              <h2 className="text-sm font-semibold">Booking</h2>
+              <div className="mt-2 space-y-1 text-sm text-gray-600">
+                <p>
+                  Stage:{" "}
+                  <span className="font-medium">
+                    {order.status.replace(/_/g, " ")}
+                  </span>
+                </p>
+                {order.booking?.parcelBookedAt ? (
+                  <>
+                    <p>
+                      Courier:{" "}
+                      <span className="font-medium">
+                        {order.booking.courierName}
+                      </span>
+                    </p>
+                    <p>
+                      LR:{" "}
+                      <span className="font-mono">
+                        {order.booking.lrNumber}
+                      </span>
+                    </p>
+                  </>
+                ) : null}
+                {(order.booking?.lrDocuments.length ?? 0) > 0 ? (
+                  <p className="text-xs text-green-700">LR PDF uploaded</p>
+                ) : null}
+              </div>
+              {canViewBooking &&
+              ["PAID", "PACKED", "PARCEL_BOOKED"].includes(order.status) ? (
+                <Link
+                  href={`/app/booking/${order.id}`}
+                  className="mt-2 inline-block text-sm underline hover:text-gray-900"
+                >
+                  Open booking panel
+                </Link>
+              ) : null}
+            </Card>
+          ) : null}
 
           <Card>
             <h2 className="text-sm font-semibold">Customer</h2>

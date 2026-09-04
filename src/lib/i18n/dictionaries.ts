@@ -105,6 +105,28 @@ export type Dictionary = {
     deliverTo: string;
     items: string;
     notFound: string;
+    trackOrder: string;
+  };
+  tracking: {
+    title: string;
+    reference: string;
+    notFound: string;
+    stepPlaced: string;
+    stepPaid: string;
+    stepPacked: string;
+    stepParcelBooked: string;
+    stepPaymentPending: string;
+    stepPaymentFailed: string;
+    awaitingDispatch: string;
+    dispatched: string;
+    courier: string;
+    lrNumber: string;
+    bookingDate: string;
+    parcelCount: string;
+    downloadLr: string;
+    deliverTo: string;
+    itemsCount: string;
+    contactNote: string;
   };
   footer: {
     contact: string;
@@ -216,6 +238,29 @@ const en: Dictionary = {
     deliverTo: "Deliver to",
     items: "Items",
     notFound: "We could not find that order.",
+    trackOrder: "Track your order",
+  },
+  tracking: {
+    title: "Track your order",
+    reference: "Order reference",
+    notFound: "We could not find that order. Check the link and try again.",
+    stepPlaced: "Order placed",
+    stepPaid: "Payment confirmed",
+    stepPacked: "Packed",
+    stepParcelBooked: "Handed to courier",
+    stepPaymentPending: "Awaiting payment",
+    stepPaymentFailed: "Payment not confirmed",
+    awaitingDispatch: "Your order is being prepared for dispatch.",
+    dispatched: "Your parcel is on its way.",
+    courier: "Courier / transport",
+    lrNumber: "LR / parcel number",
+    bookingDate: "Booking date",
+    parcelCount: "Number of parcels",
+    downloadLr: "Download LR copy",
+    deliverTo: "Deliver to",
+    itemsCount: "Items",
+    contactNote:
+      "For any help with your order, contact us on the number on our website.",
   },
   footer: {
     contact: "Contact",
@@ -331,6 +376,30 @@ const ta: Dictionary = {
     deliverTo: "விநியோகம்",
     items: "பொருட்கள்",
     notFound: "அந்த ஆர்டரைக் கண்டுபிடிக்க முடியவில்லை.",
+    trackOrder: "உங்கள் ஆர்டரைக் கண்காணியுங்கள்",
+  },
+  tracking: {
+    title: "உங்கள் ஆர்டரைக் கண்காணியுங்கள்",
+    reference: "ஆர்டர் குறிப்பு எண்",
+    notFound:
+      "அந்த ஆர்டரைக் கண்டுபிடிக்க முடியவில்லை. இணைப்பைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்.",
+    stepPlaced: "ஆர்டர் செய்யப்பட்டது",
+    stepPaid: "பணம் உறுதிப்படுத்தப்பட்டது",
+    stepPacked: "பேக் செய்யப்பட்டது",
+    stepParcelBooked: "கூரியரிடம் ஒப்படைக்கப்பட்டது",
+    stepPaymentPending: "பணம் செலுத்த வேண்டியுள்ளது",
+    stepPaymentFailed: "பணம் உறுதிப்படுத்தப்படவில்லை",
+    awaitingDispatch: "உங்கள் ஆர்டர் அனுப்புவதற்குத் தயாராகிறது.",
+    dispatched: "உங்கள் பார்சல் வழியில் உள்ளது.",
+    courier: "கூரியர் / போக்குவரத்து",
+    lrNumber: "LR / பார்சல் எண்",
+    bookingDate: "புக்கிங் தேதி",
+    parcelCount: "பார்சல்களின் எண்ணிக்கை",
+    downloadLr: "LR நகலைப் பதிவிறக்குங்கள்",
+    deliverTo: "விநியோகம்",
+    itemsCount: "பொருட்கள்",
+    contactNote:
+      "உங்கள் ஆர்டர் தொடர்பான உதவிக்கு, எங்கள் இணையதளத்தில் உள்ள எண்ணில் தொடர்பு கொள்ளுங்கள்.",
   },
   footer: {
     contact: "தொடர்பு",

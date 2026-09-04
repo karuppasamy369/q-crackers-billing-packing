@@ -378,6 +378,17 @@ export async function getOrderForConsole(id: string) {
         include: { verifiedBy: { select: { code: true } } },
       },
       bill: { select: { id: true, billNumber: true, status: true } },
+      booking: {
+        select: {
+          courierName: true,
+          lrNumber: true,
+          bookingDate: true,
+          parcelCount: true,
+          packedAt: true,
+          parcelBookedAt: true,
+          lrDocuments: { where: { isCurrent: true }, select: { id: true } },
+        },
+      },
     },
   });
   if (!order) throw new NotFoundError("That order does not exist.");

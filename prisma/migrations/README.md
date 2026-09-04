@@ -33,3 +33,4 @@ developer's machine at apply time.
 | `20260903120000_phase3_orders`      | customers, orders, order_items, order_status_history (+ money/consistency CHECK constraints) |
 | `20260904090000_phase4_billing`     | bills, bill_items, bill_sequences (+ number/GST/consistency CHECK constraints); renames partner login codes P1→PK, P2→PSR, P3→KA |
 | `20260904140000_phase5_payments`    | payments, partner_payment_accounts; `orders.assignedPartnerId/Code` (+ immutability trigger); one-active-payment-per-order and unique-UTR partial indexes |
+| `20260904160000_phase6_booking`     | bookings, lr_documents; CHECK that PARCEL_BOOKED requires the four courier fields; one-current-LR-per-order partial index |

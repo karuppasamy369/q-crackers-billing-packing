@@ -68,7 +68,14 @@ export default async function ConfirmationPage({
           >
             {t.payment.title}
           </Link>
-        ) : null}
+        ) : (
+          <Link
+            href={`/track/${order.reference}`}
+            className="mt-2 inline-block text-sm underline"
+          >
+            {t.confirmation.trackOrder}
+          </Link>
+        )}
         <p className="mt-2 text-xs text-gray-600">
           {t.confirmation.contactNote}
         </p>
