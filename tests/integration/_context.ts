@@ -68,6 +68,14 @@ export function logout(): void {
   h.cookieJar.delete(SESSION_COOKIE);
 }
 
+/** Whether the mocked browser still holds a session cookie — used to catch
+ *  the "revoked in the DB but the browser cookie was never cleared" bug
+ *  class (that stale-but-present cookie is what sends the edge middleware
+ *  into a redirect loop, since it can only check presence, not validity). */
+export function hasSessionCookie(): boolean {
+  return h.cookieJar.has(SESSION_COOKIE);
+}
+
 export async function resetCatalogue(prisma: PrismaClient): Promise<void> {
   // Order matters for FKs (bill_items/order_items/status_history cascade).
   await prisma.review.deleteMany();

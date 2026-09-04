@@ -210,9 +210,14 @@ export async function changeOwnPassword(raw: unknown): Promise<void> {
     },
   });
 
-  // Invalidate every other session; the current request keeps its cookie but
-  // its session row is revoked too, forcing a fresh sign-in everywhere.
+  // Invalidate every session, including this one, forcing a fresh sign-in
+  // everywhere. `destroyCurrentSession` also clears this browser's cookie —
+  // without that, the cookie stays present-but-revoked, and the edge
+  // middleware (which can only check cookie *presence*, not validity) bounces
+  // `/login` straight back to the console, which then redirects back to
+  // `/login`, forever.
   await revokeAllSessionsForUser(user.id, user.id);
+  await destroyCurrentSession(user.id);
 
   await recordAudit(
     {
