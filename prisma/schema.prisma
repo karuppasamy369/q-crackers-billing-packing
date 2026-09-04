@@ -97,6 +97,33 @@ enum PaymentMode {
   OTHER
 }
 
+/// Online-order payment lifecycle. INITIATED = record created; SUBMITTED =
+/// customer supplied a UTR; VERIFIED = an authorised person (or, later, a PSP /
+/// webhook) confirmed it; REJECTED = confirmed not received; FAILED = the hold
+/// expired before verification.
+enum PaymentStatus {
+  INITIATED
+  SUBMITTED
+  VERIFIED
+  REJECTED
+  FAILED
+}
+
+enum PaymentChannel {
+  UPI
+  BANK_TRANSFER
+  CASH
+  OTHER
+}
+
+/// How a payment was confirmed. Phase 5 ships MANUAL only; PSP_API and WEBHOOK
+/// are wired in later behind the PaymentVerifier interface.
+enum PaymentVerificationMethod {
+  MANUAL
+  PSP_API
+  WEBHOOK
+}
+
 // ---------------------------------------------------------------------------
 // RBAC
 // ---------------------------------------------------------------------------
@@ -192,17 +219,21 @@ model User {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  role                Role                 @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  sessions            Session[]
-  permissionOverrides UserPermission[]     @relation("UserPermissionTarget")
-  authoredOverrides   UserPermission[]     @relation("UserPermissionAuthor")
-  auditLogs           AuditLog[]           @relation("AuditActor")
-  revokedSessions     Session[]            @relation("SessionRevoker")
-  settingsEdited      Setting[]            @relation("SettingEditor")
-  inventoryMovements  InventoryMovement[]  @relation("InventoryMovementAuthor")
-  orderStatusChanges  OrderStatusHistory[] @relation("OrderStatusChanger")
-  billsCreated        Bill[]               @relation("BillCreator")
-  billsCancelled      Bill[]               @relation("BillCanceller")
+  role                  Role                    @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  sessions              Session[]
+  permissionOverrides   UserPermission[]        @relation("UserPermissionTarget")
+  authoredOverrides     UserPermission[]        @relation("UserPermissionAuthor")
+  auditLogs             AuditLog[]              @relation("AuditActor")
+  revokedSessions       Session[]               @relation("SessionRevoker")
+  settingsEdited        Setting[]               @relation("SettingEditor")
+  inventoryMovements    InventoryMovement[]     @relation("InventoryMovementAuthor")
+  orderStatusChanges    OrderStatusHistory[]    @relation("OrderStatusChanger")
+  billsCreated          Bill[]                  @relation("BillCreator")
+  billsCancelled        Bill[]                  @relation("BillCanceller")
+  ordersAssigned        Order[]                 @relation("OrderPartner")
+  paymentsVerified      Payment[]               @relation("PaymentVerifier")
+  paymentAccount        PartnerPaymentAccount?
+  paymentAccountsEdited PartnerPaymentAccount[] @relation("PaymentAccountEditor")
 
   @@index([roleId])
   @@map("users")
@@ -439,6 +470,12 @@ model Order {
   paymentStatus OrderPaymentStatus @default(PENDING)
   source        OrderSource        @default(ONLINE)
 
+  /// The partner this order belongs to. Set once at checkout (direct orders →
+  /// house partner; /s/<code> link orders → that partner) and NEVER changed —
+  /// a DB trigger blocks re-assignment. Drives billing and reports.
+  assignedPartnerId   String? @db.Uuid
+  assignedPartnerCode String?
+
   // Customer + delivery snapshot (immutable once placed).
   customerName  String
   customerPhone String
@@ -471,12 +508,15 @@ model Order {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  customer Customer             @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  items    OrderItem[]
-  history  OrderStatusHistory[]
-  bill     Bill?
+  customer        Customer             @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  assignedPartner User?                @relation("OrderPartner", fields: [assignedPartnerId], references: [id], onDelete: Restrict)
+  items           OrderItem[]
+  history         OrderStatusHistory[]
+  payments        Payment[]
+  bill            Bill?
 
   @@index([customerId])
+  @@index([assignedPartnerId])
   @@index([status])
   @@index([paymentStatus])
   @@index([placedAt])
@@ -638,4 +678,77 @@ model BillItem {
 
   @@index([billId])
   @@map("bill_items")
+}
+
+// ---------------------------------------------------------------------------
+// Payments (Phase 5) — provider-agnostic UPI + manual verification
+// ---------------------------------------------------------------------------
+
+/// Per-partner payment collection details. One row per partner; each partner
+/// edits only their own (permission `payments.account.manage`). The house
+/// partner's row doubles as the house account.
+model PartnerPaymentAccount {
+  id                 String  @id @default(uuid()) @db.Uuid
+  userId             String  @unique @db.Uuid
+  /// UPI VPA / handle, e.g. "shop@okhdfcbank".
+  upiVpa             String?
+  payeeName          String?
+  /// Optional uploaded static QR (private storage key) as a fallback to the
+  /// generated amount-filled QR.
+  staticQrStorageKey String?
+  instructions       String?
+  isActive           Boolean @default(true)
+
+  updatedById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user      User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  updatedBy User? @relation("PaymentAccountEditor", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("partner_payment_accounts")
+}
+
+model Payment {
+  id      String @id @default(uuid()) @db.Uuid
+  orderId String @db.Uuid
+
+  channel  PaymentChannel @default(UPI)
+  /// "MANUAL" now; a PSP name later. Free text so new providers need no enum bump.
+  provider String         @default("MANUAL")
+  status   PaymentStatus  @default(INITIATED)
+
+  /// Amount expected — snapshot of order.totalPaise when the payment was created.
+  amountPaise Int
+  currency    String @default("INR")
+
+  /// Customer-supplied UPI transaction id / UTR. Globally unique when present.
+  upiReference String?
+  payerName    String?
+  payerVpa     String?
+
+  /// Snapshot of the collecting partner's account at submission time.
+  payeeVpa          String?
+  payeeName         String?
+  assignedPartnerId String? @db.Uuid
+
+  submittedAt        DateTime?
+  verifiedById       String?                    @db.Uuid
+  verifiedAt         DateTime?
+  verificationMethod PaymentVerificationMethod?
+  rejectionReason    String?
+
+  /// Raw payload from a future PSP / webhook verification.
+  rawPayload Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order      Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  verifiedBy User? @relation("PaymentVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([status])
+  @@index([assignedPartnerId])
+  @@map("payments")
 }

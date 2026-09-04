@@ -48,6 +48,7 @@ describe("permission catalogue", () => {
       "orders.override_state",
       "payments.confirm_manual",
       "payments.refund",
+      "payments.account.manage",
       "billing.cancel",
       "customers.export",
       "tracking.manage",

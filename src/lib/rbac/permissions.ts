@@ -48,7 +48,11 @@ export const PERMISSIONS = {
   },
   "payments.confirm_manual": {
     category: "Payments",
-    description: "Manually confirm an offline / bank-transfer payment",
+    description: "Verify / reject a customer payment (authorised manual check)",
+  },
+  "payments.account.manage": {
+    category: "Payments",
+    description: "Manage one's own UPI / payment collection details",
   },
   "payments.refund": { category: "Payments", description: "Record a refund" },
 

@@ -41,6 +41,11 @@ const runtimeSchema = z.object({
   // the browser.
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
   SUPABASE_STORAGE_BUCKET: z.string().min(1).default("qc-media"),
+
+  // --- Scheduled jobs -----------------------------------------------------
+  // Bearer secret for /api/cron/* routes (expired stock-hold release).
+  // When unset, the cron routes return 503 (disabled).
+  CRON_SECRET: z.string().min(16).optional(),
 });
 
 type Env = z.infer<typeof runtimeSchema>;

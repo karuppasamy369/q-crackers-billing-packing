@@ -16,8 +16,11 @@ import {
   checkoutSchema,
   orderReferenceSchema,
 } from "@/lib/validation/checkout";
+import { partnerLinkCodeSchema } from "@/lib/validation/payment";
 
-const ORDER_HOLD_MINUTES = 30;
+// Payment verification is a manual (or, later, PSP) step, so stock is held for
+// a full day before an unpaid order's reservation is swept.
+const ORDER_HOLD_MINUTES = 1440;
 const RATE_LIMIT_WINDOW_MS = 10 * 60_000;
 const RATE_LIMIT_MAX = 8;
 
@@ -33,6 +36,7 @@ export type CreateOrderResult = {
  */
 export async function createOnlineOrder(
   raw: unknown,
+  opts: { partnerCode?: string | null } = {},
 ): Promise<CreateOrderResult> {
   const ctx = await getRequestContext();
 
@@ -77,6 +81,15 @@ export async function createOnlineOrder(
       `We are currently unable to deliver to ${stateName}.`,
     );
   }
+
+  // --- Partner attribution (permanent, set once) -----------------------
+  // A /s/<code> link order belongs to that partner; a direct order belongs to
+  // the configured house partner. Either way the order carries a partner, and
+  // a DB trigger blocks any later re-assignment.
+  const { partner: assignedPartner, viaLink } = await resolveAssignedPartner(
+    opts.partnerCode,
+    settings["billing.housePartnerCode"],
+  );
 
   // --- Server-authoritative quote --------------------------------------
   const quote = await quoteCart(items);
@@ -158,6 +171,8 @@ export async function createOnlineOrder(
         status: "AWAITING_PAYMENT",
         paymentStatus: "PENDING",
         source: "ONLINE",
+        assignedPartnerId: assignedPartner?.id ?? null,
+        assignedPartnerCode: assignedPartner?.code ?? null,
         customerName: customer.name,
         customerPhone: customer.phone,
         customerEmail: customer.email || null,
@@ -208,6 +223,8 @@ export async function createOnlineOrder(
           reserved: quote.lines.map((l) => ({ sku: l.sku, qty: l.quantity })),
           customerPhone: phoneNormalized,
           pincode: customer.pincode,
+          assignedPartnerCode: assignedPartner?.code ?? null,
+          viaPartnerLink: viaLink,
         },
       },
       ctx,
@@ -218,6 +235,42 @@ export async function createOnlineOrder(
   });
 
   return { reference: order.reference, totalPaise: order.totalPaise };
+}
+
+/**
+ * Decide which partner an order belongs to. A valid, active `/s/<code>` link
+ * wins; otherwise the configured house partner. Never throws — a broken
+ * house-partner setting just yields a null assignment (billing later surfaces
+ * the mis-configuration).
+ */
+async function resolveAssignedPartner(
+  linkCode: string | null | undefined,
+  housePartnerCode: string,
+): Promise<{ partner: { id: string; code: string } | null; viaLink: boolean }> {
+  const parsed = linkCode
+    ? partnerLinkCodeSchema.safeParse(linkCode)
+    : null;
+
+  if (parsed?.success) {
+    const user = await db.user.findUnique({
+      where: { code: parsed.data },
+      include: { role: true },
+    });
+    if (user && user.isActive && user.role.key === "PARTNER") {
+      return { partner: { id: user.id, code: user.code }, viaLink: true };
+    }
+  }
+
+  const house = housePartnerCode
+    ? await db.user.findUnique({
+        where: { code: housePartnerCode },
+        include: { role: true },
+      })
+    : null;
+  if (house && house.isActive && house.role.key === "PARTNER") {
+    return { partner: { id: house.id, code: house.code }, viaLink: false };
+  }
+  return { partner: null, viaLink: false };
 }
 
 // ---------------------------------------------------------------------------
@@ -319,6 +372,12 @@ export async function getOrderForConsole(id: string) {
         include: { changedBy: { select: { code: true } } },
       },
       customer: { select: { id: true, phoneNormalized: true } },
+      assignedPartner: { select: { code: true, name: true } },
+      payments: {
+        orderBy: { createdAt: "desc" },
+        include: { verifiedBy: { select: { code: true } } },
+      },
+      bill: { select: { id: true, billNumber: true, status: true } },
     },
   });
   if (!order) throw new NotFoundError("That order does not exist.");

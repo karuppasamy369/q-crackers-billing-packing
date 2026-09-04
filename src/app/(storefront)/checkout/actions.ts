@@ -1,12 +1,21 @@
 "use server";
 
+import { cookies } from "next/headers";
+
 import { quoteCart, type CartQuote } from "@/server/services/pricing-service";
 import { createOnlineOrder } from "@/server/services/orders-service";
+import { submitPayment } from "@/server/services/payments-service";
 import { isAppError } from "@/server/http/errors";
 import type { CartItemInput } from "@/lib/validation/checkout";
+import { PARTNER_COOKIE } from "@/lib/storefront/partner-cookie";
 
 export type OrderActionState =
   | { ok: true; reference: string }
+  | { ok: false; error: string }
+  | null;
+
+export type PaymentActionState =
+  | { ok: true; status: "submitted" | "already_submitted" | "already_paid" }
   | { ok: false; error: string }
   | null;
 
@@ -38,19 +47,25 @@ export async function createOrderAction(
   formData: FormData,
 ): Promise<OrderActionState> {
   try {
-    const { reference } = await createOnlineOrder({
-      items: parseItems(formData.get("items")),
-      customer: {
-        name: formData.get("name"),
-        phone: formData.get("phone"),
-        email: formData.get("email") || undefined,
-        addressLine1: formData.get("addressLine1"),
-        addressLine2: formData.get("addressLine2") || undefined,
-        city: formData.get("city"),
-        stateCode: formData.get("stateCode"),
-        pincode: formData.get("pincode"),
+    const jar = await cookies();
+    const partnerCode = jar.get(PARTNER_COOKIE)?.value ?? null;
+
+    const { reference } = await createOnlineOrder(
+      {
+        items: parseItems(formData.get("items")),
+        customer: {
+          name: formData.get("name"),
+          phone: formData.get("phone"),
+          email: formData.get("email") || undefined,
+          addressLine1: formData.get("addressLine1"),
+          addressLine2: formData.get("addressLine2") || undefined,
+          city: formData.get("city"),
+          stateCode: formData.get("stateCode"),
+          pincode: formData.get("pincode"),
+        },
       },
-    });
+      { partnerCode },
+    );
     return { ok: true, reference };
   } catch (err) {
     return {
@@ -58,6 +73,27 @@ export async function createOrderAction(
       error: isAppError(err)
         ? err.publicMessage
         : "We could not place your order. Please try again.",
+    };
+  }
+}
+
+export async function submitPaymentAction(
+  _prev: PaymentActionState,
+  formData: FormData,
+): Promise<PaymentActionState> {
+  try {
+    const result = await submitPayment(formData.get("reference"), {
+      upiReference: formData.get("upiReference"),
+      payerName: formData.get("payerName") || undefined,
+      payerVpa: formData.get("payerVpa") || undefined,
+    });
+    return { ok: true, status: result.status };
+  } catch (err) {
+    return {
+      ok: false,
+      error: isAppError(err)
+        ? err.publicMessage
+        : "We could not record your payment. Please try again.",
     };
   }
 }

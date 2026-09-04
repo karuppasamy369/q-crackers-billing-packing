@@ -67,12 +67,40 @@ export type Dictionary = {
     placeOrder: string;
     paymentNote: string;
   };
+  payment: {
+    title: string;
+    amountDue: string;
+    payTo: string;
+    scanQr: string;
+    openUpiApp: string;
+    orderRef: string;
+    instructionsHeading: string;
+    afterPaying: string;
+    utrLabel: string;
+    utrHelp: string;
+    payerNameOptional: string;
+    payerVpaOptional: string;
+    submit: string;
+    submitting: string;
+    verifyingTitle: string;
+    verifyingBody: string;
+    paidTitle: string;
+    paidBody: string;
+    failedTitle: string;
+    failedBody: string;
+    noAccount: string;
+    viewOrder: string;
+    error: string;
+  };
   confirmation: {
     title: string;
     thanks: string;
     reference: string;
     status: string;
     paymentPending: string;
+    paymentVerifying: string;
+    paymentPaid: string;
+    paymentFailed: string;
     contactNote: string;
     deliverTo: string;
     items: string;
@@ -142,7 +170,37 @@ const en: Dictionary = {
     summary: "Order summary",
     placeOrder: "Place order",
     paymentNote:
-      "Online payment is being finalised. Place your order now — we will contact you to complete payment.",
+      "Next you will pay by UPI (GPay / PhonePe / Paytm). Nothing is charged automatically — you enter your transaction ID and we verify it before confirming your order.",
+  },
+  payment: {
+    title: "Pay for your order",
+    amountDue: "Amount to pay",
+    payTo: "Pay to",
+    scanQr: "Scan this QR code with any UPI app",
+    openUpiApp: "Open UPI app",
+    orderRef: "Order reference",
+    instructionsHeading: "Payment instructions",
+    afterPaying:
+      "After paying, enter your UPI transaction ID / UTR below so we can verify it.",
+    utrLabel: "UPI transaction ID / UTR",
+    utrHelp:
+      "The 12-digit reference shown in your UPI app after the payment succeeds.",
+    payerNameOptional: "Name on the paying account (optional)",
+    payerVpaOptional: "Your UPI ID (optional)",
+    submit: "I have paid — submit for verification",
+    submitting: "Submitting…",
+    verifyingTitle: "Payment received — being verified",
+    verifyingBody:
+      "We have your transaction ID and are verifying the payment. Your order is confirmed once verification is complete. We will contact you on your mobile number if anything else is needed.",
+    paidTitle: "Payment confirmed",
+    paidBody: "Your payment has been verified. Thank you!",
+    failedTitle: "Payment not confirmed",
+    failedBody:
+      "This order's payment could not be confirmed and the stock hold has been released. Please place a new order or contact us.",
+    noAccount:
+      "Online payment details are not available for this order. We will contact you on your mobile number to arrange payment.",
+    viewOrder: "View order details",
+    error: "We could not record your payment. Please try again.",
   },
   confirmation: {
     title: "Order received",
@@ -150,8 +208,11 @@ const en: Dictionary = {
     reference: "Order reference",
     status: "Status",
     paymentPending: "Awaiting payment",
+    paymentVerifying: "Payment being verified",
+    paymentPaid: "Payment confirmed",
+    paymentFailed: "Payment not confirmed",
     contactNote:
-      "We will contact you on your mobile number to complete payment and confirm dispatch.",
+      "We will contact you on your mobile number to confirm dispatch.",
     deliverTo: "Deliver to",
     items: "Items",
     notFound: "We could not find that order.",
@@ -224,7 +285,37 @@ const ta: Dictionary = {
     summary: "ஆர்டர் சுருக்கம்",
     placeOrder: "ஆர்டர் செய்",
     paymentNote:
-      "ஆன்லைன் பணம் செலுத்துதல் இறுதி செய்யப்படுகிறது. இப்போது ஆர்டர் செய்யுங்கள் — பணம் செலுத்துவதை முடிக்க நாங்கள் உங்களைத் தொடர்பு கொள்வோம்.",
+      "அடுத்து UPI (GPay / PhonePe / Paytm) மூலம் பணம் செலுத்துவீர்கள். தானாக எந்தத் தொகையும் பிடிக்கப்படாது — உங்கள் பரிவர்த்தனை எண்ணை நீங்கள் பதிவு செய்ய, ஆர்டரை உறுதிப்படுத்தும் முன் நாங்கள் சரிபார்ப்போம்.",
+  },
+  payment: {
+    title: "உங்கள் ஆர்டருக்குப் பணம் செலுத்துங்கள்",
+    amountDue: "செலுத்த வேண்டிய தொகை",
+    payTo: "யாருக்கு செலுத்த வேண்டும்",
+    scanQr: "எந்த UPI செயலியிலும் இந்த QR குறியீட்டை ஸ்கேன் செய்யுங்கள்",
+    openUpiApp: "UPI செயலியைத் திற",
+    orderRef: "ஆர்டர் குறிப்பு எண்",
+    instructionsHeading: "பணம் செலுத்தும் வழிமுறைகள்",
+    afterPaying:
+      "பணம் செலுத்திய பிறகு, நாங்கள் சரிபார்க்க உங்கள் UPI பரிவர்த்தனை எண் / UTR-ஐ கீழே பதிவு செய்யுங்கள்.",
+    utrLabel: "UPI பரிவர்த்தனை எண் / UTR",
+    utrHelp:
+      "பணம் வெற்றிகரமாகச் சென்ற பிறகு உங்கள் UPI செயலியில் காட்டப்படும் 12 இலக்க குறிப்பு எண்.",
+    payerNameOptional: "பணம் செலுத்தும் கணக்கின் பெயர் (விருப்பம்)",
+    payerVpaOptional: "உங்கள் UPI ஐடி (விருப்பம்)",
+    submit: "நான் பணம் செலுத்திவிட்டேன் — சரிபார்ப்புக்கு அனுப்பு",
+    submitting: "அனுப்புகிறது…",
+    verifyingTitle: "பணம் பெறப்பட்டது — சரிபார்க்கப்படுகிறது",
+    verifyingBody:
+      "உங்கள் பரிவர்த்தனை எண் எங்களிடம் உள்ளது; பணத்தைச் சரிபார்க்கிறோம். சரிபார்ப்பு முடிந்ததும் உங்கள் ஆர்டர் உறுதிப்படுத்தப்படும். தேவைப்பட்டால் உங்கள் கைபேசி எண்ணில் தொடர்பு கொள்வோம்.",
+    paidTitle: "பணம் உறுதிப்படுத்தப்பட்டது",
+    paidBody: "உங்கள் பணம் சரிபார்க்கப்பட்டது. நன்றி!",
+    failedTitle: "பணம் உறுதிப்படுத்தப்படவில்லை",
+    failedBody:
+      "இந்த ஆர்டரின் பணம் உறுதிப்படுத்த முடியவில்லை; கையிருப்பு ஒதுக்கீடு விடுவிக்கப்பட்டது. புதிய ஆர்டர் செய்யுங்கள் அல்லது எங்களைத் தொடர்பு கொள்ளுங்கள்.",
+    noAccount:
+      "இந்த ஆர்டருக்கு ஆன்லைன் பணம் செலுத்தும் விவரங்கள் கிடைக்கவில்லை. பணம் செலுத்த ஏற்பாடு செய்ய உங்கள் கைபேசி எண்ணில் தொடர்பு கொள்வோம்.",
+    viewOrder: "ஆர்டர் விவரங்களைப் பார்",
+    error: "உங்கள் பணத்தைப் பதிவு செய்ய முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
   },
   confirmation: {
     title: "ஆர்டர் பெறப்பட்டது",
@@ -232,8 +323,11 @@ const ta: Dictionary = {
     reference: "ஆர்டர் குறிப்பு எண்",
     status: "நிலை",
     paymentPending: "பணம் செலுத்த வேண்டியுள்ளது",
+    paymentVerifying: "பணம் சரிபார்க்கப்படுகிறது",
+    paymentPaid: "பணம் உறுதிப்படுத்தப்பட்டது",
+    paymentFailed: "பணம் உறுதிப்படுத்தப்படவில்லை",
     contactNote:
-      "பணம் செலுத்துவதை முடிக்கவும் அனுப்புகையை உறுதிப்படுத்தவும் உங்கள் கைபேசி எண்ணில் தொடர்பு கொள்வோம்.",
+      "அனுப்புகையை உறுதிப்படுத்த உங்கள் கைபேசி எண்ணில் தொடர்பு கொள்வோம்.",
     deliverTo: "விநியோகம்",
     items: "பொருட்கள்",
     notFound: "அந்த ஆர்டரைக் கண்டுபிடிக்க முடியவில்லை.",

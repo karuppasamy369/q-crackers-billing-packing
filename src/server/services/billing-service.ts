@@ -98,24 +98,73 @@ export async function issueBillForOrder(raw: unknown) {
     );
   }
 
+  const bill = await issueBillForOrderCore(order, order.items, auth.user, ctx);
+  await safeGeneratePdf(bill.id);
+  return getBill({ id: bill.id });
+}
+
+type OrderForBill = {
+  id: string;
+  reference: string;
+  customerId: string;
+  assignedPartnerCode: string | null;
+  stateCode: string;
+  stateName: string;
+  customerName: string;
+  customerPhone: string;
+  addressLine1: string;
+  addressLine2: string | null;
+  city: string;
+  subtotalPaise: number;
+  taxPaise: number;
+  shippingPaise: number;
+  totalPaise: number;
+};
+
+type OrderItemForBill = {
+  productId: string;
+  sku: string;
+  productName: string;
+  unitPricePaise: number;
+  gstRateBp: number;
+  quantity: number;
+  lineSubtotalPaise: number;
+  lineTaxPaise: number;
+};
+
+/**
+ * The bill-issuing core — no permission check, no `raw` parsing. Shared by the
+ * permissioned `issueBillForOrder` and by payment verification. Allocates the
+ * number under the order's **assigned partner** (falling back to the configured
+ * house partner) and copies the order's own amounts so the bill matches
+ * exactly what the customer paid.
+ */
+export async function issueBillForOrderCore(
+  order: OrderForBill,
+  items: OrderItemForBill[],
+  actor: { id: string; code: string; role: string },
+  ctx: Awaited<ReturnType<typeof getRequestContext>>,
+) {
+  const existing = await db.bill.findUnique({ where: { orderId: order.id } });
+  if (existing) return existing;
+
   const seller = await sellerSnapshot();
-  const houseUser = await db.user.findUnique({
-    where: { code: seller.housePartnerCode },
+  const code = order.assignedPartnerCode || seller.housePartnerCode;
+  const partnerUser = await db.user.findUnique({
+    where: { code },
     include: { role: true },
   });
-  if (!houseUser || houseUser.role.key !== "PARTNER") {
+  if (!partnerUser || partnerUser.role.key !== "PARTNER") {
     throw new AppError(
       "INTERNAL",
-      `House partner code "${seller.housePartnerCode}" is not a valid partner. Fix it in Settings.`,
+      `Bill code "${code}" is not a valid partner account. Fix it in Settings.`,
     );
   }
 
   const intraState = order.stateCode === seller.stateCode;
   const fiscalYear = indianFiscalYear();
 
-  // Use the order's own line + total amounts so the bill matches exactly what
-  // the customer paid; only the CGST/SGST/IGST split is derived here.
-  const lineData = order.items.map((it) => {
+  const lineData = items.map((it) => {
     const split = splitGst(it.lineTaxPaise, intraState);
     return {
       productId: it.productId,
@@ -135,22 +184,18 @@ export async function issueBillForOrder(raw: unknown) {
         split.igstPaise,
     };
   });
-
   const totalTax = splitGst(order.taxPaise, intraState);
+
   const bill = await db.$transaction(async (tx) => {
-    const allocated = await allocateBillNumber(
-      tx,
-      seller.housePartnerCode,
-      fiscalYear,
-    );
+    const allocated = await allocateBillNumber(tx, code, fiscalYear);
     const created = await tx.bill.create({
       data: {
         billNumber: allocated.billNumber,
-        userCode: seller.housePartnerCode,
+        userCode: code,
         fiscalYear,
         sequenceNo: allocated.sequenceNo,
         type: "ONLINE_ORDER",
-        createdById: auth.user.id,
+        createdById: actor.id,
         orderId: order.id,
         customerId: order.customerId,
         sellerName: seller.name,
@@ -181,15 +226,16 @@ export async function issueBillForOrder(raw: unknown) {
     });
 
     await recordAudit(
-      auditActor(auth),
+      { kind: "user", userId: actor.id, code: actor.code, role: actor.role },
       {
         action: "bill.issue",
-        summary: `${auth.user.code} issued bill ${created.billNumber} for online order ${order.reference}`,
+        summary: `${actor.code} issued bill ${created.billNumber} for online order ${order.reference}`,
         entityType: "Bill",
         entityId: created.id,
         details: {
           billNumber: created.billNumber,
           orderId: order.id,
+          userCode: code,
           totalPaise: created.totalPaise,
         },
       },
@@ -199,11 +245,7 @@ export async function issueBillForOrder(raw: unknown) {
     return created;
   });
 
-  // The PDF is a regenerable cache (getBillPdfBytes rebuilds it if missing), so
-  // a failure here never fails bill issuance — but we await it so the stored
-  // key is ready by the time the caller renders the detail page.
-  await safeGeneratePdf(bill.id);
-  return getBill({ id: bill.id });
+  return bill;
 }
 
 // ---------------------------------------------------------------------------
@@ -574,7 +616,8 @@ export async function listBillableOrders() {
 // PDF
 // ---------------------------------------------------------------------------
 
-async function safeGeneratePdf(billId: string): Promise<void> {
+/** Warm the bill-PDF cache; never throws (regenerated on demand otherwise). */
+export async function safeGeneratePdf(billId: string): Promise<void> {
   // In tests, skip the eager warm — getBillPdfBytes regenerates on demand, and
   // rendering a PDF per bill would starve the in-process test database.
   if (isTest) return;

@@ -28,8 +28,21 @@ boundary — the UI hiding a control is cosmetic only.
 
 ## External integrations (later phases, all behind interfaces)
 
-- **PaymentProvider** — Razorpay first. Webhook signature + server-side status +
-  amount + currency + idempotency before an order is treated as paid.
+- **Payments (Phase 5 — implemented)** — provider-agnostic UPI, NO Razorpay.
+  Per-partner `PartnerPaymentAccount` (VPA / payee / optional static QR).
+  Checkout renders an amount-filled UPI QR + deep link for the order's assigned
+  partner; the customer submits their UTR (`payments` row, status `SUBMITTED`);
+  an authorised partner verifies it (`payments.confirm_manual`) against the
+  collecting account. `PaymentVerifier` interface
+  (`src/server/integrations/payment/verifier.ts`) ships `MANUAL` only, with
+  `lookup` / `parseWebhook` hooks for a future bank/PSP adapter — a verified
+  payment always ends as `PaymentStatus.VERIFIED` + a `verificationMethod`.
+  Verification asserts right-order + amount-match + UTR-once idempotency, then
+  in one txn: commit reserved stock as a `SALE` movement, mark the order `PAID`,
+  write history + audit; the bill is auto-issued under the order's assigned
+  partner immediately after. Expired unpaid holds are swept by
+  `/api/cron/release-holds` (Bearer `CRON_SECRET`) — but an order with a
+  `SUBMITTED` or `VERIFIED` payment is never auto-failed.
 - **StorageProvider** — Supabase Storage private buckets. Random keys, signed
   URLs minted server-side after an authorization check.
 - **NotificationProvider** — WhatsApp. Business events write to
@@ -114,9 +127,17 @@ transaction as the bill. Invoice PDFs render with `@react-pdf/renderer`
 (`React.createElement`, no JSX) and are cached in the private bucket, served via
 `/api/billing/[id]/pdf` behind `billing.view`.
 
+Phase 5: `payments`, `partner_payment_accounts`; `orders.assignedPartnerId` /
+`assignedPartnerCode` (set once at checkout — `/s/<code>` link order → that
+partner, else the house partner — and frozen by a DB trigger). Partial unique
+indexes enforce one live payment per order and one recorded UTR globally; a
+`CHECK` keeps amounts positive and verified/rejected rows timestamped.
+`ORDER_HOLD_MINUTES` raised to 1440 (manual verification takes longer than a
+gateway redirect).
+
 ## Data model — later phases (planned)
 
-`payments`, `payment_webhook_events`, `bookings`, `lr_documents`,
+`payment_webhook_events`, `bookings`, `lr_documents`,
 `tracking_tokens`, `tracking_events`, `notification_outbox`,
 `notification_receipts`, `reviews`.
 

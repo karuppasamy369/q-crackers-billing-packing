@@ -6,6 +6,14 @@ import { isAppError } from "@/server/http/errors";
 import { PageHeader, Card, Forbidden } from "@/components/console/ui";
 import { formatPaise, formatGstRateBp } from "@/lib/money";
 
+const PAYMENT_BADGE: Record<string, string> = {
+  SUBMITTED: "bg-amber-100 text-amber-800",
+  VERIFIED: "bg-green-100 text-green-800",
+  REJECTED: "bg-red-100 text-red-800",
+  FAILED: "bg-gray-200 text-gray-700",
+  INITIATED: "bg-gray-100 text-gray-600",
+};
+
 export default async function OrderDetailPage({
   params,
 }: {
@@ -13,6 +21,7 @@ export default async function OrderDetailPage({
 }) {
   const auth = await requireAuth();
   if (!hasPermission(auth, "orders.view")) return <Forbidden />;
+  const canViewPayments = hasPermission(auth, "payments.view");
 
   const { id } = await params;
   let order;
@@ -103,6 +112,63 @@ export default async function OrderDetailPage({
         </Card>
 
         <div className="space-y-6">
+          <Card>
+            <h2 className="text-sm font-semibold">Partner &amp; payment</h2>
+            <div className="mt-2 space-y-1 text-sm text-gray-600">
+              <p>
+                Assigned partner:{" "}
+                <span className="font-mono">
+                  {order.assignedPartnerCode ?? "—"}
+                </span>
+                {order.assignedPartner ? ` (${order.assignedPartner.name})` : ""}
+              </p>
+              <p>
+                Payment status:{" "}
+                <span className="font-medium">
+                  {order.paymentStatus.toLowerCase()}
+                </span>
+              </p>
+              {order.bill ? (
+                <p>
+                  Bill:{" "}
+                  <Link
+                    href={`/app/billing/${order.bill.id}`}
+                    className="underline hover:text-gray-900"
+                  >
+                    {order.bill.billNumber}
+                  </Link>
+                </p>
+              ) : null}
+            </div>
+            {order.payments.length > 0 ? (
+              <ul className="mt-3 space-y-2 border-t border-gray-100 pt-3 text-xs">
+                {order.payments.map((p) => (
+                  <li key={p.id} className="flex items-center justify-between">
+                    <span>
+                      <span
+                        className={`rounded px-1.5 py-0.5 ${
+                          PAYMENT_BADGE[p.status] ?? "bg-gray-100 text-gray-600"
+                        }`}
+                      >
+                        {p.status}
+                      </span>{" "}
+                      <span className="font-mono">{p.upiReference ?? "—"}</span>{" "}
+                      {formatPaise(p.amountPaise)}
+                    </span>
+                    {canViewPayments ? (
+                      <Link
+                        href={`/app/payments/${p.id}`}
+                        className="underline hover:text-gray-900"
+                      >
+                        Open
+                      </Link>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </Card>
+
           <Card>
             <h2 className="text-sm font-semibold">Customer</h2>
             <div className="mt-2 text-sm text-gray-600">

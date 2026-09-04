@@ -180,6 +180,30 @@ async function seedUsers(roleIdByKey: Record<"PARTNER" | "STAFF", string>) {
   return created;
 }
 
+async function seedPaymentAccounts() {
+  const partners = await prisma.user.findMany({
+    where: { role: { key: "PARTNER" } },
+  });
+  const demo = process.env.SEED_SAMPLE_CATALOGUE === "1";
+  let created = 0;
+  for (const p of partners) {
+    const existing = await prisma.partnerPaymentAccount.findUnique({
+      where: { userId: p.id },
+    });
+    if (existing) continue;
+    await prisma.partnerPaymentAccount.create({
+      data: {
+        userId: p.id,
+        upiVpa: demo ? `${p.code.toLowerCase()}@okhdfcbank` : null,
+        payeeName: demo ? `Q Crackers (${p.code})` : null,
+        isActive: true,
+      },
+    });
+    created++;
+  }
+  return created;
+}
+
 async function seedSettings() {
   let created = 0;
   for (const key of SETTING_KEYS) {
@@ -332,6 +356,9 @@ async function main() {
 
   const settingsCreated = await seedSettings();
   console.info(`  • settings: ${settingsCreated} default row(s) created`);
+
+  const paymentAccounts = await seedPaymentAccounts();
+  console.info(`  • payment accounts: ${paymentAccounts} created`);
 
   await seedSampleCatalogue();
 

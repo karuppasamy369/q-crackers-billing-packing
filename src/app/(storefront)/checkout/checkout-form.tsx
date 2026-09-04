@@ -36,7 +36,7 @@ export function CheckoutForm({ t }: { t: Dictionary }) {
   useEffect(() => {
     if (state?.ok) {
       clear();
-      router.push(`/checkout/confirmation/${state.reference}`);
+      router.push(`/checkout/pay/${state.reference}`);
     }
   }, [state, clear, router]);
 

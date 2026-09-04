@@ -30,22 +30,46 @@ export default async function ConfirmationPage({
     throw err;
   }
 
+  const paymentLabel =
+    order.paymentStatus === "PAID"
+      ? t.confirmation.paymentPaid
+      : order.status === "PAYMENT_FAILED" || order.paymentStatus === "FAILED"
+        ? t.confirmation.paymentFailed
+        : order.status === "AWAITING_PAYMENT"
+          ? t.confirmation.paymentVerifying
+          : t.confirmation.paymentPending;
+  const paid = order.paymentStatus === "PAID";
+
   return (
     <div className="mx-auto max-w-lg space-y-6">
-      <div className="rounded-xl border border-green-200 bg-green-50 p-5">
-        <h1 className="text-lg font-semibold text-green-900">
+      <div
+        className={
+          paid
+            ? "rounded-xl border border-green-200 bg-green-50 p-5"
+            : "rounded-xl border border-gray-200 bg-gray-50 p-5"
+        }
+      >
+        <h1 className="text-lg font-semibold text-gray-900">
           {t.confirmation.title}
         </h1>
-        <p className="mt-1 text-sm text-green-800">{t.confirmation.thanks}</p>
+        <p className="mt-1 text-sm text-gray-700">{t.confirmation.thanks}</p>
         <p className="mt-3 text-sm">
           {t.confirmation.reference}:{" "}
           <span className="font-mono font-semibold">{order.reference}</span>
         </p>
         <p className="text-sm">
           {t.confirmation.status}:{" "}
-          <span className="font-medium">{t.confirmation.paymentPending}</span>
+          <span className="font-medium">{paymentLabel}</span>
         </p>
-        <p className="mt-2 text-xs text-green-800">
+        {order.status === "AWAITING_PAYMENT" ? (
+          <Link
+            href={`/checkout/pay/${order.reference}`}
+            className="mt-2 inline-block text-sm underline"
+          >
+            {t.payment.title}
+          </Link>
+        ) : null}
+        <p className="mt-2 text-xs text-gray-600">
           {t.confirmation.contactNote}
         </p>
       </div>

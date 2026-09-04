@@ -41,6 +41,18 @@ export const NAV_ITEMS: NavItem[] = [
     available: true,
   },
   {
+    label: "Payments",
+    href: "/app/payments",
+    permission: "payments.view",
+    available: true,
+  },
+  {
+    label: "Payment account",
+    href: "/app/payment-account",
+    permission: "payments.account.manage",
+    available: true,
+  },
+  {
     label: "Billing",
     href: "/app/billing",
     permission: "billing.view",
