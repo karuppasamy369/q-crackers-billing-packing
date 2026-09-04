@@ -95,6 +95,12 @@ export const PERMISSIONS = {
     category: "Tracking",
     description: "Revoke or regenerate customer tracking links",
   },
+
+  "notifications.manage": {
+    category: "Notifications",
+    description:
+      "View the WhatsApp notification outbox, retry failed messages, and send review requests",
+  },
   "reviews.moderate": {
     category: "Reviews",
     description: "View and unpublish customer reviews",

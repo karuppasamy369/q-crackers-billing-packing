@@ -3,10 +3,21 @@ import { notFound } from "next/navigation";
 import { requireAuth, hasPermission } from "@/server/rbac/authorize";
 import { getOrderForConsole } from "@/server/services/orders-service";
 import { getTrackingAdminInfo } from "@/server/services/tracking-service";
+import { getOrderNotifications } from "@/server/services/notifications-service";
 import { isAppError } from "@/server/http/errors";
 import { PageHeader, Card, Forbidden } from "@/components/console/ui";
 import { formatPaise, formatGstRateBp } from "@/lib/money";
 import { TrackingPanel } from "./tracking-panel";
+import { ReviewRequestButton } from "./review-request-button";
+
+const NOTIF_BADGE: Record<string, string> = {
+  SENT: "bg-green-100 text-green-800",
+  PENDING: "bg-gray-100 text-gray-600",
+  SENDING: "bg-blue-100 text-blue-800",
+  FAILED: "bg-amber-100 text-amber-800",
+  DEAD: "bg-red-100 text-red-800",
+  SKIPPED: "bg-gray-200 text-gray-500",
+};
 
 const PAYMENT_BADGE: Record<string, string> = {
   SUBMITTED: "bg-amber-100 text-amber-800",
@@ -25,6 +36,7 @@ export default async function OrderDetailPage({
   if (!hasPermission(auth, "orders.view")) return <Forbidden />;
   const canViewPayments = hasPermission(auth, "payments.view");
   const canViewBooking = hasPermission(auth, "booking.view");
+  const canManageNotifications = hasPermission(auth, "notifications.manage");
 
   const { id } = await params;
   let order;
@@ -34,7 +46,16 @@ export default async function OrderDetailPage({
     if (isAppError(err) && err.code === "NOT_FOUND") notFound();
     throw err;
   }
-  const trackingInfo = await getTrackingAdminInfo(order.id);
+  const [trackingInfo, notifications] = await Promise.all([
+    getTrackingAdminInfo(order.id),
+    getOrderNotifications(order.id),
+  ]);
+  const reviewEligible =
+    order.paymentStatus === "PAID" &&
+    ["PARCEL_BOOKED", "COMPLETED"].includes(order.status);
+  const reviewAlreadyQueued = notifications.some(
+    (n) => n.eventType === "REVIEW_REQUEST",
+  );
 
   return (
     <div className="space-y-6">
@@ -225,6 +246,57 @@ export default async function OrderDetailPage({
                 info={trackingInfo}
                 canManage={hasPermission(auth, "tracking.manage")}
               />
+            </Card>
+          ) : null}
+
+          {notifications.length > 0 || reviewEligible ? (
+            <Card>
+              <h2 className="mb-2 text-sm font-semibold">
+                WhatsApp notifications
+              </h2>
+              {notifications.length > 0 ? (
+                <ul className="space-y-1.5 text-xs">
+                  {notifications.map((n) => (
+                    <li
+                      key={n.id}
+                      className="flex items-center justify-between gap-2"
+                    >
+                      <span className="text-gray-600">
+                        {n.eventType.replace(/_/g, " ").toLowerCase()}
+                      </span>
+                      <span className="flex items-center gap-2">
+                        {n.status === "SENT" && n.sentAt ? (
+                          <span className="text-gray-400">
+                            {new Date(n.sentAt).toLocaleDateString()}
+                          </span>
+                        ) : null}
+                        <span
+                          className={`rounded px-1.5 py-0.5 ${
+                            NOTIF_BADGE[n.status] ?? "bg-gray-100 text-gray-600"
+                          }`}
+                        >
+                          {n.status}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-gray-500">
+                  No notifications for this order yet.
+                </p>
+              )}
+
+              {canManageNotifications &&
+              reviewEligible &&
+              !reviewAlreadyQueued ? (
+                <ReviewRequestButton orderId={order.id} />
+              ) : null}
+              {reviewAlreadyQueued ? (
+                <p className="mt-2 text-xs text-gray-400">
+                  Review request queued.
+                </p>
+              ) : null}
             </Card>
           ) : null}
 

@@ -11,6 +11,12 @@ const SENSITIVE_KEYS = new Set([
   "secret",
   "authorization",
   "cookie",
+  "accesstoken",
+  "access_token",
+  "apikey",
+  "api_key",
+  "bearer",
+  "whatsapp_access_token",
 ]);
 
 /**

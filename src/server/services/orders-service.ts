@@ -36,7 +36,7 @@ export type CreateOrderResult = {
  */
 export async function createOnlineOrder(
   raw: unknown,
-  opts: { partnerCode?: string | null } = {},
+  opts: { partnerCode?: string | null; locale?: string | null } = {},
 ): Promise<CreateOrderResult> {
   const ctx = await getRequestContext();
 
@@ -189,6 +189,7 @@ export async function createOnlineOrder(
         totalPaise: quote.totalPaise,
         pricesIncludeGst: quote.pricesIncludeGst,
         shippingMode: settings["shipping.mode"],
+        locale: opts.locale === "ta" ? "ta" : "en",
         holdExpiresAt: new Date(Date.now() + ORDER_HOLD_MINUTES * 60_000),
         items: {
           create: quote.lines.map((l) => ({

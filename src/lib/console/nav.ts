@@ -65,6 +65,12 @@ export const NAV_ITEMS: NavItem[] = [
     available: true,
   },
   {
+    label: "Notifications",
+    href: "/app/notifications",
+    permission: "notifications.manage",
+    available: true,
+  },
+  {
     label: "Customers",
     href: "/app/customers",
     permission: "customers.view",

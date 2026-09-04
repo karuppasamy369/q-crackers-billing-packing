@@ -17,6 +17,7 @@ import {
   bookingOrderIdSchema,
   bookParcelSchema,
 } from "@/lib/validation/booking";
+import { enqueueNotificationSafe } from "@/server/services/notifications-service";
 
 const PAGE_SIZE = 25;
 const LR_PREFIX = "lr-docs";
@@ -215,6 +216,10 @@ export async function markOrderPacked(raw: unknown) {
     );
   });
 
+  await enqueueNotificationSafe({
+    orderId: order.id,
+    eventType: "ORDER_PACKED",
+  });
   return loadBookingDetail(order.id);
 }
 
@@ -291,6 +296,10 @@ export async function confirmParcelBooked(raw: unknown) {
     );
   });
 
+  await enqueueNotificationSafe({
+    orderId: order.id,
+    eventType: "PARCEL_BOOKED",
+  });
   return loadBookingDetail(order.id);
 }
 
@@ -425,6 +434,10 @@ export async function uploadLrDocument(
     throw err;
   }
 
+  await enqueueNotificationSafe({
+    orderId: order.id,
+    eventType: "LR_AVAILABLE",
+  });
   return loadBookingDetail(order.id);
 }
 

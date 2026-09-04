@@ -35,3 +35,4 @@ developer's machine at apply time.
 | `20260904140000_phase5_payments`    | payments, partner_payment_accounts; `orders.assignedPartnerId/Code` (+ immutability trigger); one-active-payment-per-order and unique-UTR partial indexes |
 | `20260904160000_phase6_booking`     | bookings, lr_documents; CHECK that PARCEL_BOOKED requires the four courier fields; one-current-LR-per-order partial index |
 | `20260904180000_phase7_tracking_tokens` | tracking_tokens (hash-only public tracking credential, one per order); CHECK that `tokenHash` is a 64-char SHA-256 hex digest |
+| `20260904200000_phase8_notifications` | notification_outbox + enums; `tracking_tokens.linkVersion`; `orders.locale`; CHECKs on attempt counters, E.164 recipient, SENT-has-timestamp |

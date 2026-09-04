@@ -52,6 +52,7 @@ describe("permission catalogue", () => {
       "billing.cancel",
       "customers.export",
       "tracking.manage",
+      "notifications.manage",
       "reviews.moderate",
       "reports.view",
     ];

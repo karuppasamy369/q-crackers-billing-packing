@@ -124,6 +124,39 @@ enum PaymentVerificationMethod {
   WEBHOOK
 }
 
+/// Delivery channel for a customer notification. WhatsApp only in Phase 8;
+/// SMS / email can be added behind the same outbox + provider abstraction.
+enum NotificationChannel {
+  WHATSAPP
+}
+
+/// The order lifecycle events that trigger a customer notification.
+enum NotificationEventType {
+  PAYMENT_RECEIVED
+  ORDER_PACKED
+  PARCEL_BOOKED
+  LR_AVAILABLE
+  REVIEW_REQUEST
+}
+
+/// Outbox row lifecycle.
+/// PENDING  = waiting for the worker (also used while the provider is not yet
+///            configured — the row simply waits).
+/// SENDING  = claimed by a worker (advisory lock).
+/// SENT     = accepted by the provider (providerMessageId recorded).
+/// FAILED   = last attempt failed but attempts remain — retried after backoff.
+/// DEAD     = permanent failure or max attempts reached — never retried.
+/// SKIPPED  = not eligible to send (no / invalid phone number) — terminal, not
+///            an error.
+enum NotificationStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+  DEAD
+  SKIPPED
+}
+
 // ---------------------------------------------------------------------------
 // RBAC
 // ---------------------------------------------------------------------------
@@ -457,8 +490,9 @@ model Customer {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  orders Order[]
-  bills  Bill[]
+  orders        Order[]
+  bills         Bill[]
+  notifications NotificationOutbox[]
 
   @@index([phoneNormalized])
   @@map("customers")
@@ -503,6 +537,9 @@ model Order {
   pricesIncludeGst Boolean
   /// Snapshot of the shipping mode used.
   shippingMode     String
+  /// Storefront locale at checkout ("en" / "ta"); WhatsApp notifications for
+  /// this order are rendered in it.
+  locale           String   @default("en")
 
   /// Optimistic-lock version for later state transitions.
   version       Int       @default(0)
@@ -521,6 +558,7 @@ model Order {
   bill            Bill?
   booking         Booking?
   trackingToken   TrackingToken?
+  notifications   NotificationOutbox[]
 
   @@index([customerId])
   @@index([assignedPartnerId])
@@ -840,6 +878,11 @@ model TrackingToken {
   /// SHA-256 hex of the raw token. Unique; the sole public lookup key.
   tokenHash String @unique
 
+  /// Incremented on every rotation. The raw token is derived deterministically
+  /// as HMAC-SHA256(TRACKING_LINK_SECRET, "<orderId>:<linkVersion>") so the
+  /// server can always rebuild the current link (for a WhatsApp message or the
+  /// console) without storing it, while a rotation invalidates every older link.
+  linkVersion Int       @default(1)
   /// Null = never expires (decision 14: links do not expire in V1).
   expiresAt   DateTime?
   revokedAt   DateTime?
@@ -856,4 +899,61 @@ model TrackingToken {
   revokedBy User? @relation("TrackingTokenRevoker", fields: [revokedById], references: [id], onDelete: SetNull)
 
   @@map("tracking_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Notification outbox (Phase 8) — reliable WhatsApp delivery
+// ---------------------------------------------------------------------------
+
+/// One row per (order, event). Written in the order flow (best-effort, just
+/// after the state-change transaction commits) and reconciled by the delivery
+/// worker so nothing is lost. The worker renders the message, calls the
+/// configured WhatsApp provider, and retries transient failures with backoff up
+/// to `maxAttempts`. `dedupeKey` (unique) guarantees a single WhatsApp message
+/// per event even under retries and races.
+model NotificationOutbox {
+  id         String @id @default(uuid()) @db.Uuid
+  orderId    String @db.Uuid
+  customerId String? @db.Uuid
+
+  eventType NotificationEventType
+  channel   NotificationChannel   @default(WHATSAPP)
+  status    NotificationStatus    @default(PENDING)
+
+  /// `<orderId>:<eventType>` — enforces one notification per event.
+  dedupeKey String @unique
+
+  /// E.164 recipient (`+91XXXXXXXXXX`), snapshotted from the order. Null when
+  /// the order has no usable phone number (row is then SKIPPED).
+  recipientPhone String?
+  /// Locale the message is rendered in ("en" / "ta").
+  locale         String @default("en")
+
+  /// Provider that handled (or will handle) this row: "none" until configured,
+  /// then "log" (dev) or a real provider name e.g. "meta".
+  provider          String  @default("none")
+  providerMessageId String?
+
+  attempts      Int       @default(0)
+  maxAttempts   Int       @default(5)
+  lastAttemptAt DateTime?
+  /// Earliest time the worker may retry (backoff schedule). Null = eligible now.
+  nextAttemptAt DateTime?
+  sentAt        DateTime?
+  /// Redacted, truncated last error. Never contains tokens / credentials.
+  lastError     String?
+
+  /// Rendered message body sent to the customer (no secrets — it is the
+  /// customer-facing text). Kept for the console + debugging.
+  renderedBody String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order    Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([status, nextAttemptAt])
+  @@index([orderId])
+  @@map("notification_outbox")
 }

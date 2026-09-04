@@ -135,6 +135,27 @@ indexes enforce one live payment per order and one recorded UTR globally; a
 `ORDER_HOLD_MINUTES` raised to 1440 (manual verification takes longer than a
 gateway redirect).
 
+Phase 8: `notification_outbox` (one row per order+event, unique `dedupeKey`),
+`orders.locale` (checkout locale — the language a customer's WhatsApp messages
+render in), `tracking_tokens.linkVersion`. WhatsApp delivery is a
+`WhatsAppProvider` adapter (`src/server/integrations/notifications/` —
+`none` / `log` / `meta` selected by `WHATSAPP_PROVIDER`; credentials env-only,
+never logged). `notifications-service` writes an outbox row best-effort right
+after each state-change commit (a hiccup never touches the order), and
+`/api/cron/notifications` (Bearer `CRON_SECRET`) runs the worker: reclaim stale
+`SENDING` rows → reconcile any events a lost enqueue missed → claim a batch with
+`FOR UPDATE SKIP LOCKED` → render the localised template + rebuild the tracking
+link → send. Transient failures retry with exponential backoff up to
+`WHATSAPP_MAX_ATTEMPTS`, then `DEAD`; permanent failures go `DEAD` at once; a
+message with no valid phone is `SKIPPED`; when no provider is configured rows
+simply wait. The tracking token is now derived as
+`HMAC-SHA256(TRACKING_LINK_SECRET, "<orderId>:<linkVersion>")` so the current
+link is always rebuildable server-side (for a message or the console) without
+storing it — a `tracking_tokens` leak is still useless without the key. Events:
+payment received, order packed, parcel booked, LR available, and a
+partner-triggered review request. `notifications.manage` (partner-only) gates
+the outbox console (`/app/notifications`), retries, and review requests.
+
 Phase 7: `tracking_tokens` (one per order). Stores only the SHA-256 hex hash of
 a 256-bit base64url token — the raw token is never persisted, so a database leak
 yields no working tracking links. `tracking-service` owns the whole lifecycle:
@@ -169,8 +190,8 @@ tracking page shows "Download LR Copy" only once a current LR document exists.
 
 ## Data model — later phases (planned)
 
-`payment_webhook_events`, `notification_outbox`, `notification_receipts`,
-`reviews`.
+`payment_webhook_events`, `notification_receipts` (per-recipient delivery
+receipts, if a BSP provides them), `reviews`.
 
 ## Sessions
 

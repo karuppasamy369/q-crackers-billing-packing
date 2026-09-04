@@ -1,4 +1,9 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import {
+  createHash,
+  createHmac,
+  randomBytes,
+  timingSafeEqual,
+} from "node:crypto";
 
 /**
  * Opaque session tokens.
@@ -39,4 +44,14 @@ export function generateRandomToken(bytes = 32): string {
 
 export function sha256Hex(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+/**
+ * Keyed digest, base64url-encoded (43 chars, 256 bits). Used to derive the
+ * customer tracking token deterministically from a server secret + the order id
+ * and a rotation counter, so the current link can always be rebuilt server-side
+ * without ever storing it, while a database leak yields nothing without the key.
+ */
+export function hmacBase64Url(secret: string, message: string): string {
+  return createHmac("sha256", secret).update(message).digest("base64url");
 }

@@ -8,8 +8,9 @@ import { getRequestContext } from "@/server/http/request-context";
 import { auditActor } from "@/server/services/_helpers";
 import { NotFoundError, AppError } from "@/server/http/errors";
 import { rateLimit } from "@/lib/rate-limit";
-import { generateRandomToken, sha256Hex } from "@/server/auth/tokens";
+import { hmacBase64Url, sha256Hex } from "@/server/auth/tokens";
 import { getStorage } from "@/server/integrations/storage";
+import { env } from "@/env";
 import { orderReferenceSchema } from "@/lib/validation/checkout";
 import {
   trackingTokenSchema,
@@ -17,10 +18,26 @@ import {
 } from "@/lib/validation/tracking";
 
 // ---------------------------------------------------------------------------
-// Constants
+// Constants + token derivation
 // ---------------------------------------------------------------------------
 
-const TOKEN_BYTES = 32; // 256 bits of entropy, base64url → 43 chars
+/**
+ * The key the tracking token is derived from. An explicit `TRACKING_LINK_SECRET`
+ * is used when set; otherwise a stable value is derived from `DATABASE_URL` so
+ * local/dev works with no config. Either way a `tracking_tokens` leak on its
+ * own is useless — you also need this key to compute a working token.
+ */
+function linkSecret(): string {
+  return (
+    env.TRACKING_LINK_SECRET ??
+    sha256Hex(`qc-tracking-link::${env.DATABASE_URL}`)
+  );
+}
+
+/** The raw token for an order at a given rotation version — always rebuildable. */
+function deriveTrackingToken(orderId: string, linkVersion: number): string {
+  return hmacBase64Url(linkSecret(), `${orderId}:${linkVersion}`);
+}
 
 /** Order statuses whose orders may be tracked publicly. Anything else (an
  *  unpaid / failed order) resolves to a generic "not found". */
@@ -415,11 +432,14 @@ export async function ensureTrackingTokenForOrder(orderId: string): Promise<{
 
   const existing = await db.trackingToken.findUnique({
     where: { orderId },
-    select: { id: true, revokedAt: true },
+    select: { id: true, revokedAt: true, linkVersion: true },
   });
   if (existing && !existing.revokedAt) return { created: false, token: null };
 
-  const raw = generateRandomToken(TOKEN_BYTES);
+  // A revoked token is being re-enabled → bump the version so the old link
+  // (which may have leaked) stays dead. A brand-new token starts at version 1.
+  const linkVersion = existing ? existing.linkVersion + 1 : 1;
+  const raw = deriveTrackingToken(orderId, linkVersion);
   const tokenHash = hashTrackingToken(raw);
 
   try {
@@ -428,6 +448,7 @@ export async function ensureTrackingTokenForOrder(orderId: string): Promise<{
         where: { orderId },
         data: {
           tokenHash,
+          linkVersion,
           revokedAt: null,
           revokedById: null,
           rotatedAt: new Date(),
@@ -478,22 +499,48 @@ export async function ensureTrackingTokenByReference(
 }
 
 async function rotateHash(orderId: string, actorId: string | null) {
-  const token = generateRandomToken(TOKEN_BYTES);
+  const existing = await db.trackingToken.findUnique({
+    where: { orderId },
+    select: { linkVersion: true },
+  });
+  const linkVersion = (existing?.linkVersion ?? 0) + 1;
+  const token = deriveTrackingToken(orderId, linkVersion);
   await db.trackingToken.upsert({
     where: { orderId },
     create: {
       orderId,
       tokenHash: hashTrackingToken(token),
+      linkVersion,
       createdById: actorId,
     },
     update: {
       tokenHash: hashTrackingToken(token),
+      linkVersion,
       revokedAt: null,
       revokedById: null,
       rotatedAt: new Date(),
     },
   });
   return token;
+}
+
+/**
+ * The current shareable tracking URL for an order, rebuilt from the stored
+ * rotation version — or `null` when there is no active token / the order is not
+ * trackable. Server-only; used to put a link into a WhatsApp notification and
+ * to show it in the console.
+ */
+export async function getTrackingUrlForOrder(
+  orderId: string,
+): Promise<string | null> {
+  const row = await db.trackingToken.findUnique({
+    where: { orderId },
+    select: { linkVersion: true, revokedAt: true, expiresAt: true },
+  });
+  if (!row || row.revokedAt) return null;
+  if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) return null;
+  const token = deriveTrackingToken(orderId, row.linkVersion);
+  return `${env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/track/${token}`;
 }
 
 /**

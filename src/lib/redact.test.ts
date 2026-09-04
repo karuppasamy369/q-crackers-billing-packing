@@ -33,6 +33,21 @@ describe("redact", () => {
     expect(out.Authorization).toBe("[redacted]");
   });
 
+  it("masks WhatsApp / API credentials", () => {
+    const out = redact({
+      whatsapp_access_token: "EAAG...",
+      accessToken: "abc",
+      apiKey: "k",
+      bearer: "t",
+      keep: "ok",
+    }) as Record<string, unknown>;
+    expect(out.whatsapp_access_token).toBe("[redacted]");
+    expect(out.accessToken).toBe("[redacted]");
+    expect(out.apiKey).toBe("[redacted]");
+    expect(out.bearer).toBe("[redacted]");
+    expect(out.keep).toBe("ok");
+  });
+
   it("passes primitives through unchanged", () => {
     expect(redact("hello")).toBe("hello");
     expect(redact(42)).toBe(42);

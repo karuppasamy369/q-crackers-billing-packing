@@ -10,6 +10,7 @@ import { env } from "@/env";
 import { isAppError } from "@/server/http/errors";
 import type { CartItemInput } from "@/lib/validation/checkout";
 import { PARTNER_COOKIE } from "@/lib/storefront/partner-cookie";
+import { LOCALE_COOKIE } from "@/lib/i18n";
 
 export type OrderActionState =
   | { ok: true; reference: string }
@@ -51,6 +52,7 @@ export async function createOrderAction(
   try {
     const jar = await cookies();
     const partnerCode = jar.get(PARTNER_COOKIE)?.value ?? null;
+    const locale = jar.get(LOCALE_COOKIE)?.value ?? null;
 
     const { reference } = await createOnlineOrder(
       {
@@ -66,7 +68,7 @@ export async function createOrderAction(
           pincode: formData.get("pincode"),
         },
       },
-      { partnerCode },
+      { partnerCode, locale },
     );
     return { ok: true, reference };
   } catch (err) {

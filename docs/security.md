@@ -149,6 +149,27 @@ in Phase 1, ⏳ = designed, lands in a later phase.
 | Raw tokens are never logged                                 | ✅     | audit summaries and `logger` calls reference the order, never the token                                                    |
 | No customer login required                                  | ✅     | fully anonymous; the token (or, for the customer's own confirmation page, the order reference) is the only capability      |
 
+## WhatsApp notifications (Phase 8)
+
+| Control                                                      | Status | Where                                                                                                                                                                                   |
+| ------------------------------------------------------------ | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Provider credentials only from env, never the DB or client   | ✅     | `WHATSAPP_ACCESS_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` read in `src/server/integrations/notifications/index.ts`; no `NEXT_PUBLIC_`                                                        |
+| Access token never logged / never persisted                  | ✅     | sent only in the `Authorization` header; adapter scrubs its own token from any error; `redact.ts` covers `access_token` etc.; `lastError` runs through `safeError` (integration-tested) |
+| App works with no provider configured                        | ✅     | `WHATSAPP_PROVIDER=none` → `NullWhatsAppProvider` (`configured=false`); worker holds rows `PENDING`, order flow unaffected (integration-tested)                                         |
+| A WhatsApp failure never fails the order / payment / booking | ✅     | enqueue is a plain insert **after** the state transaction commits, via `enqueueNotificationSafe` which swallows all errors; the worker is a separate cron (integration-tested)          |
+| Reliable delivery (outbox + reconciliation)                  | ✅     | `notification_outbox` row per event; `reconcileMissingNotifications` re-creates anything a lost enqueue missed (integration-tested)                                                     |
+| Idempotent creation — no duplicate messages                  | ✅     | unique `dedupeKey = "<orderId>:<eventType>"`; second enqueue is a no-op; P2002 caught on the race (integration-tested)                                                                  |
+| Retry only transient failures, with backoff and a hard cap   | ✅     | `retryable` from the adapter; `BACKOFF_MINUTES` schedule; `DEAD` at `maxAttempts` or on a permanent error (integration-tested)                                                          |
+| No duplicate send under a retry race / concurrent workers    | ✅     | claim via `UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED)` + status guard; stale `SENDING` reclaimed after 15 min (integration-tested: two concurrent runs send once)           |
+| Never send without a valid phone number                      | ✅     | `toWhatsAppRecipient` (Indian-mobile → E.164) → `null` ⇒ row `SKIPPED`, worker never calls the provider; DB `CHECK` enforces the E.164 shape (integration-tested)                       |
+| Customer PII minimised in logs                               | ✅     | phone numbers masked (`maskPhone`) before any log line; message bodies truncated in logs                                                                                                |
+| Public tracking / LR security preserved                      | ✅     | messages link to the Phase 7 `/track/<token>` (token rebuilt via HMAC, not stored); LR access still goes through the rate-limited token route                                           |
+| Transactional vs. promotional separation                     | ✅     | only the five order-lifecycle events are implemented; no bulk / marketing path exists in this phase                                                                                     |
+| Worker endpoint is authenticated                             | ✅     | `/api/cron/notifications` requires `Authorization: Bearer <CRON_SECRET>`; 503 until configured                                                                                          |
+| Admin operations are partner-only, enforced server-side      | ✅     | `notifications.manage` gates `listNotifications` / `retryNotification` / `requestReviewNotification` (integration-tested → 403 for staff); not in `STAFF_DEFAULT_PERMISSIONS`           |
+| Console never shows secrets or full phone numbers            | ✅     | provider status shows only the mode + configured flag; recipients rendered masked                                                                                                       |
+| Notification lifecycle audit-logged                          | ✅     | `notification.enqueued` / `notification.sent` / `notification.dead` / `notification.retry` entries                                                                                      |
+
 ## Known Phase 1 limitations
 
 - Rate limiting is per-process. On multi-instance hosting it is a soft layer;

@@ -145,6 +145,17 @@ export type Dictionary = {
     shareCopy: string;
     shareCopied: string;
   };
+  /**
+   * WhatsApp notification message templates. `{name}` `{orderNo}` `{amount}`
+   * `{courier}` `{lrNumber}` `{parcels}` `{link}` are filled in per order.
+   */
+  notifications: {
+    paymentReceived: string;
+    orderPacked: string;
+    parcelBooked: string;
+    lrAvailable: string;
+    reviewRequest: string;
+  };
   footer: {
     contact: string;
     rights: string;
@@ -299,6 +310,18 @@ const en: Dictionary = {
     shareRefresh: "Get a new link",
     shareCopy: "Copy",
     shareCopied: "Copied",
+  },
+  notifications: {
+    paymentReceived:
+      "Q Crackers: Hi {name}, we have received your payment of {amount} for order {orderNo}. Your order is confirmed and we will pack it soon. Track it any time here: {link}",
+    orderPacked:
+      "Q Crackers: Hi {name}, order {orderNo} has been packed and is ready for dispatch. Track it here: {link}",
+    parcelBooked:
+      "Q Crackers: Hi {name}, order {orderNo} has been handed to {courier} (LR number {lrNumber}, {parcels} parcel(s)). Track it here: {link}",
+    lrAvailable:
+      "Q Crackers: Hi {name}, the LR copy for order {orderNo} (LR number {lrNumber}) is now available. You can download it from your tracking page: {link}",
+    reviewRequest:
+      "Q Crackers: Hi {name}, we hope you enjoyed your order {orderNo}. If you have a moment, we would love your feedback: {link}",
   },
   footer: {
     contact: "Contact",
@@ -459,6 +482,18 @@ const ta: Dictionary = {
     shareRefresh: "புதிய இணைப்பைப் பெறு",
     shareCopy: "நகலெடு",
     shareCopied: "நகலெடுக்கப்பட்டது",
+  },
+  notifications: {
+    paymentReceived:
+      "Q Crackers: வணக்கம் {name}, ஆர்டர் {orderNo}-க்கான உங்கள் பணம் {amount} பெறப்பட்டது. உங்கள் ஆர்டர் உறுதிப்படுத்தப்பட்டது, விரைவில் பேக் செய்யப்படும். இங்கே கண்காணியுங்கள்: {link}",
+    orderPacked:
+      "Q Crackers: வணக்கம் {name}, ஆர்டர் {orderNo} பேக் செய்யப்பட்டு அனுப்பத் தயாராக உள்ளது. இங்கே கண்காணியுங்கள்: {link}",
+    parcelBooked:
+      "Q Crackers: வணக்கம் {name}, ஆர்டர் {orderNo} {courier} நிறுவனத்திடம் ஒப்படைக்கப்பட்டது (LR எண் {lrNumber}, {parcels} பார்சல்). இங்கே கண்காணியுங்கள்: {link}",
+    lrAvailable:
+      "Q Crackers: வணக்கம் {name}, ஆர்டர் {orderNo}-க்கான LR நகல் (LR எண் {lrNumber}) இப்போது கிடைக்கிறது. உங்கள் கண்காணிப்புப் பக்கத்திலிருந்து பதிவிறக்கலாம்: {link}",
+    reviewRequest:
+      "Q Crackers: வணக்கம் {name}, உங்கள் ஆர்டர் {orderNo} உங்களுக்குப் பிடித்திருக்கும் என நம்புகிறோம். சிறிது நேரம் இருந்தால், உங்கள் கருத்தைப் பகிருங்கள்: {link}",
   },
   footer: {
     contact: "தொடர்பு",

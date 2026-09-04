@@ -21,11 +21,49 @@ hook so migrations apply before the new version serves traffic.
    `NEXT_PUBLIC_APP_URL`, `NODE_ENV`, session/lockout tuning if non-default.
    `NEXT_PUBLIC_APP_URL` **must** be the real public origin — customer tracking
    links (`/track/<token>`) are built from it. `STORAGE_MAX_DOCUMENT_BYTES`
-   (default 10 MB) caps LR / tracking PDF uploads. Phase 7 adds no new secrets.
+   (default 10 MB) caps LR / tracking PDF uploads. Set `TRACKING_LINK_SECRET`
+   (32+ chars) so tracking links survive a `DATABASE_URL` change.
 3. Run `npx prisma migrate deploy`.
 4. Run `npm run db:seed` **once**. Capture the printed temporary passwords and
    distribute them to each partner/staff member over a secure channel.
 5. Confirm each account is forced to change password on first sign-in.
+6. **Scheduled jobs.** Set `CRON_SECRET` (16+ chars) and schedule two GET calls
+   with header `Authorization: Bearer <CRON_SECRET>`:
+   - `/api/cron/release-holds` — every ~15 min (expired stock holds).
+   - `/api/cron/notifications` — every ~2–5 min (WhatsApp delivery + retries).
+     Both are idempotent and safe to over-call. Until `CRON_SECRET` is set they
+     return 503 and nothing is delivered.
+
+## WhatsApp notifications
+
+Order updates (payment received, packed, parcel booked, LR available, review
+request) are queued in `notification_outbox` and delivered by the
+`/api/cron/notifications` worker.
+
+**Configure the real provider (Meta WhatsApp Business Cloud API):**
+
+1. In Meta Business Manager, add a WhatsApp product, get a permanent
+   **system-user access token**, the **phone number ID**, and register the five
+   message templates: `payment_received`, `order_packed`, `parcel_booked`,
+   `lr_available`, `review_request` (body params in the order documented in
+   `src/lib/notifications/templates.ts`), each in English **and** Tamil.
+2. Set env vars (server-only, never `NEXT_PUBLIC_`):
+   `WHATSAPP_PROVIDER=meta`, `WHATSAPP_ACCESS_TOKEN=…`,
+   `WHATSAPP_PHONE_NUMBER_ID=…`, optionally `WHATSAPP_API_VERSION`,
+   `WHATSAPP_MAX_ATTEMPTS`.
+3. Redeploy. The queued backlog delivers on the next worker run.
+
+`WHATSAPP_PROVIDER=log` writes messages to the server log (dev). `none`
+(default) records but does not send — the app is fully functional either way.
+
+**Swapping providers later** — add an adapter implementing `WhatsAppProvider`
+under `src/server/integrations/notifications/`, add a case in `index.ts`, and
+point `WHATSAPP_PROVIDER` at it. Nothing else changes.
+
+**Consent / messaging policy** — only transactional order-lifecycle messages are
+sent, to the number the customer gave at checkout. There is no bulk / marketing
+path. Keep the registered templates strictly transactional to stay within
+WhatsApp's rules.
 
 ## Backups (to be enabled with the Supabase project)
 
@@ -59,6 +97,13 @@ shows the `/track/<token>` URL once (copy and send it); "Regenerate" replaces it
 link only ever exposes delivery progress and the LR PDF — no address, contact
 details, or payment data. Requires `tracking.manage` (partners only). Filter the
 audit log by `action` `tracking.token_*` to see the history.
+
+**A customer did not get a WhatsApp message** — Notifications (partner-only).
+Find the row by order/bill number. `SKIPPED` = no valid mobile on file (nothing
+to do — call the customer). `FAILED`/`DEAD` = provider rejected it; check "Last
+error", fix the cause (e.g. template not approved, number not on WhatsApp), then
+"Retry". `PENDING` with "not configured" = set up the provider (see above).
+Send a review request from the order detail page once the parcel is booked.
 
 ## Incident: suspected credential compromise
 

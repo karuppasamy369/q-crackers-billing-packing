@@ -23,6 +23,7 @@ import {
   safeGeneratePdf,
 } from "@/server/services/billing-service";
 import { getVerifier } from "@/server/integrations/payment/verifier";
+import { enqueueNotificationSafe } from "@/server/services/notifications-service";
 
 const PAGE_SIZE = 25;
 const SUBMIT_RATE_MAX = 6;
@@ -515,6 +516,14 @@ export async function verifyPayment(raw: unknown) {
       error: err instanceof Error ? err.message : String(err),
     });
   }
+
+  // Notify the customer (best-effort, after commit). A WhatsApp hiccup never
+  // undoes a verified payment; anything missed here is recovered by the
+  // notification worker's reconciliation sweep.
+  await enqueueNotificationSafe({
+    orderId: order.id,
+    eventType: "PAYMENT_RECEIVED",
+  });
 
   return loadPaymentDetail(payment.id);
 }

@@ -49,9 +49,28 @@ const runtimeSchema = z.object({
   SUPABASE_STORAGE_BUCKET: z.string().min(1).default("qc-media"),
 
   // --- Scheduled jobs -----------------------------------------------------
-  // Bearer secret for /api/cron/* routes (expired stock-hold release).
-  // When unset, the cron routes return 503 (disabled).
+  // Bearer secret for /api/cron/* routes (expired stock-hold release,
+  // notification delivery). When unset, the cron routes return 503 (disabled).
   CRON_SECRET: z.string().min(16).optional(),
+
+  // --- Customer tracking links ------------------------------------------
+  // HMAC key the tracking token is derived from. Set an explicit 32+ char
+  // value in staging/production so links survive a DATABASE_URL change and can
+  // be rotated deliberately; when unset, a stable value is derived from
+  // DATABASE_URL. SERVER ONLY — never NEXT_PUBLIC.
+  TRACKING_LINK_SECRET: z.string().min(32).optional(),
+
+  // --- WhatsApp notifications (Phase 8) --------------------------------
+  // "none" (default) = notifications are recorded but not sent — the app works
+  // normally. "log" = write the message to the server log (dev). "meta" = the
+  // real WhatsApp Business Cloud API.
+  WHATSAPP_PROVIDER: z.enum(["none", "log", "meta"]).default("none"),
+  // Required only when WHATSAPP_PROVIDER=meta. SERVER ONLY — never NEXT_PUBLIC.
+  WHATSAPP_ACCESS_TOKEN: z.string().min(1).optional(),
+  WHATSAPP_PHONE_NUMBER_ID: z.string().min(1).optional(),
+  WHATSAPP_API_VERSION: z.string().min(2).default("v21.0"),
+  // Delivery attempts before a message is marked permanently failed (DEAD).
+  WHATSAPP_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(5),
 });
 
 type Env = z.infer<typeof runtimeSchema>;
@@ -82,6 +101,17 @@ function loadEnv(): Env {
   ) {
     throw new Error(
       "STORAGE_DRIVER=supabase requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.",
+    );
+  }
+
+  if (
+    !isBuildPhase &&
+    parsed.data.WHATSAPP_PROVIDER === "meta" &&
+    (!parsed.data.WHATSAPP_ACCESS_TOKEN ||
+      !parsed.data.WHATSAPP_PHONE_NUMBER_ID)
+  ) {
+    throw new Error(
+      "WHATSAPP_PROVIDER=meta requires WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID.",
     );
   }
 
