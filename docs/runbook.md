@@ -114,6 +114,21 @@ ever store a given name + city/state — no contact details.
 **Complete an order** — Booking → order → "Mark completed" (needs the LR
 uploaded). This is the final state; it also unlocks the review prompt.
 
+**Ready to Book / parcel covers** — Booking → "Ready to Book →" (`booking.view`;
+staff need the same permission the Booking Panel already requires). Shows
+every paid + packed order waiting to be handed to a courier — it updates
+itself automatically as orders are packed or booked, since it is just a
+filtered view of the existing order status, not a separate list to maintain.
+Filter by packed date, courier, partner, city, pincode, or free text; use
+**Apply Filters** / **Reset**. **🖨 Print Cover** opens an A4 parcel label for
+one order (or select rows and **🖨 Print Selected Covers** for several at
+once); **🖨 Print Consolidated Report** and **Export CSV** both honour the
+filters currently applied. A cover only ever shows what the customer's own
+tracking page shows (name, address, courier, item count, a tracking QR) —
+never payment details or internal booking remarks. An order disappears from
+this list the moment it is successfully parcel-booked; if booking fails
+validation, it stays here unchanged.
+
 **Run a report** — Reports (partner-only, `reports.view`). Pick a date range
 (≤ 400 days) and read daily/period sales, billing by login code, product-wise
 sales, GST summary, payment summary, order-status and packing/booking counts,

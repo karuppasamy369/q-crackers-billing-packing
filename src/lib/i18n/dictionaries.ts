@@ -171,6 +171,23 @@ export type Dictionary = {
     notEligible: string;
     error: string;
   };
+  /** Parcel-cover / shipping-label labels. */
+  cover: {
+    deliverTo: string;
+    from: string;
+    mobile: string;
+    billNo: string;
+    orderNo: string;
+    courier: string;
+    parcel: string;
+    of: string;
+    items: string;
+    handleWithCare: string;
+    fireworksNotice: string;
+    trackAt: string;
+    scanToTrack: string;
+    notes: string;
+  };
   footer: {
     contact: string;
     rights: string;
@@ -352,6 +369,22 @@ const en: Dictionary = {
     yourRating: "Your rating",
     notEligible: "You can leave a review once your parcel is on its way.",
     error: "We could not save your review. Please try again.",
+  },
+  cover: {
+    deliverTo: "Deliver to",
+    from: "From",
+    mobile: "Mobile",
+    billNo: "Bill No.",
+    orderNo: "Order Ref",
+    courier: "Courier / Transport",
+    parcel: "Parcel",
+    of: "of",
+    items: "Items",
+    handleWithCare: "FRAGILE — HANDLE WITH CARE",
+    fireworksNotice: "Contains fireworks. Keep away from fire and heat.",
+    trackAt: "Track your order",
+    scanToTrack: "Scan to track",
+    notes: "Notes",
   },
   footer: {
     contact: "Contact",
@@ -542,6 +575,22 @@ const ta: Dictionary = {
     notEligible:
       "உங்கள் பார்சல் வழியில் சென்றதும் நீங்கள் மதிப்பீடு அளிக்கலாம்.",
     error: "உங்கள் மதிப்பீட்டைச் சேமிக்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
+  },
+  cover: {
+    deliverTo: "பெறுநர்",
+    from: "அனுப்புநர்",
+    mobile: "கைபேசி",
+    billNo: "பில் எண்",
+    orderNo: "ஆர்டர் குறிப்பு",
+    courier: "கூரியர் / போக்குவரத்து",
+    parcel: "பார்சல்",
+    of: "/",
+    items: "பொருட்கள்",
+    handleWithCare: "எளிதில் உடையக்கூடியது — கவனமாக கையாளவும்",
+    fireworksNotice: "பட்டாசுகள் உள்ளன. நெருப்பு மற்றும் வெப்பத்திலிருந்து விலக்கி வைக்கவும்.",
+    trackAt: "உங்கள் ஆர்டரைக் கண்காணியுங்கள்",
+    scanToTrack: "கண்காணிக்க ஸ்கேன் செய்யவும்",
+    notes: "குறிப்புகள்",
   },
   footer: {
     contact: "தொடர்பு",

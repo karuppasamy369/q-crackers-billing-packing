@@ -72,3 +72,66 @@ export const bookParcelSchema = z.object({
   remarks: remarksSchema,
 });
 export type BookParcelInput = z.infer<typeof bookParcelSchema>;
+
+// ---------------------------------------------------------------------------
+// Ready to Book report + Cover print (Feature: booking consolidation)
+// ---------------------------------------------------------------------------
+
+const optionalDate = z
+  .string()
+  .trim()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Use a YYYY-MM-DD date.")
+  .refine((v) => !Number.isNaN(Date.parse(`${v}T00:00:00Z`)), {
+    message: "That is not a valid date.",
+  })
+  .optional()
+  .or(z.literal(""));
+
+const shortText = z.string().trim().max(120).optional().or(z.literal(""));
+
+/**
+ * Server-side filters for the Ready to Book view. All optional — an empty
+ * filter returns every order that is currently ready for parcel booking.
+ */
+export const readyToBookFilterSchema = z
+  .object({
+    from: optionalDate,
+    to: optionalDate,
+    courier: shortText,
+    partnerCode: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .max(10)
+      .regex(/^[A-Z0-9]*$/)
+      .optional()
+      .or(z.literal("")),
+    city: shortText,
+    pincode: z
+      .string()
+      .trim()
+      .regex(/^\d{0,6}$/, "Pincode is up to 6 digits.")
+      .optional()
+      .or(z.literal("")),
+    q: z.string().trim().max(120).optional().or(z.literal("")),
+    page: z.coerce.number().int().min(1).max(100_000).default(1),
+  })
+  .refine((v) => !v.from || !v.to || v.from <= v.to, {
+    message: "The start date must be on or before the end date.",
+    path: ["to"],
+  });
+export type ReadyToBookFilter = z.infer<typeof readyToBookFilterSchema>;
+
+/** Parcel-cover print request for one order. */
+export const coverPrintSchema = z.object({
+  orderId: uuidSchema,
+  /** How many parcels this consignment has (defaults to the booking value or 1). */
+  parcels: z.coerce.number().int().min(1).max(50).default(1),
+  /** When set, print only this one parcel number (1-based). */
+  only: z.coerce.number().int().min(1).max(50).optional(),
+});
+
+/** Bulk parcel-cover print — a set of order ids. */
+export const coverBulkSchema = z.object({
+  orderIds: z.array(uuidSchema).min(1).max(100),
+});

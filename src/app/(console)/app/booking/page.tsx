@@ -37,6 +37,14 @@ export default async function BookingPage({
       <PageHeader
         title="Booking"
         description="Paid orders waiting to be packed and handed to a courier. Work top to bottom: pack, enter the courier / LR details, upload the LR PDF."
+        actions={
+          <Link
+            href="/app/booking/ready-to-book"
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
+          >
+            Ready to Book →
+          </Link>
+        }
       />
 
       <Card className="p-0">

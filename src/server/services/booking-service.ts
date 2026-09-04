@@ -16,8 +16,19 @@ import { validatePdfUpload } from "@/lib/pdf-validation";
 import {
   bookingOrderIdSchema,
   bookParcelSchema,
+  readyToBookFilterSchema,
+  coverPrintSchema,
+  coverBulkSchema,
+  type ReadyToBookFilter,
 } from "@/lib/validation/booking";
 import { enqueueNotificationSafe } from "@/server/services/notifications-service";
+import {
+  ensureTrackingTokenForOrder,
+  getTrackingUrlForOrder,
+} from "@/server/services/tracking-service";
+import { getEffectiveSettings } from "@/server/services/settings-service";
+import { maskPhone } from "@/lib/notifications/phone";
+import { sha256Hex } from "@/server/auth/tokens";
 
 const PAGE_SIZE = 25;
 const LR_PREFIX = "lr-docs";
@@ -146,6 +157,355 @@ export async function getBookingForConsole(raw: unknown) {
   const order = await loadBookingDetail(orderId);
   if (!order) throw new NotFoundError("That order does not exist.");
   return order;
+}
+
+// ---------------------------------------------------------------------------
+// Ready to Book — a consolidated view of orders ready for parcel booking.
+// It is a *derived* view of the existing state machine: an order is "ready to
+// book" exactly when it is PACKED and PAID (i.e. `confirmParcelBooked` would
+// accept it). No new status column, no parallel workflow.
+// ---------------------------------------------------------------------------
+
+const READY_SUMMARY_SCAN_CAP = 5000;
+const READY_EXPORT_CAP = 10_000;
+const READY_PAGE_SIZE = 30;
+
+function opaqueRef(orderId: string): string {
+  return `QC-${sha256Hex(orderId).slice(0, 8).toUpperCase()}`;
+}
+
+function buildReadyToBookWhere(f: ReadyToBookFilter): Prisma.OrderWhereInput {
+  const where: Prisma.OrderWhereInput = {
+    status: "PACKED",
+    paymentStatus: "PAID",
+  };
+
+  const bookingWhere: Prisma.BookingWhereInput = {};
+  if (f.from) {
+    bookingWhere.packedAt = {
+      gte: new Date(`${f.from}T00:00:00.000Z`),
+    };
+  }
+  if (f.to) {
+    bookingWhere.packedAt = {
+      ...(bookingWhere.packedAt as object | undefined),
+      lt: new Date(Date.parse(`${f.to}T00:00:00.000Z`) + 86_400_000),
+    };
+  }
+  if (f.courier) {
+    bookingWhere.courierName = { contains: f.courier, mode: "insensitive" };
+  }
+  if (Object.keys(bookingWhere).length > 0) {
+    where.booking = { is: bookingWhere };
+  }
+
+  if (f.partnerCode) where.assignedPartnerCode = f.partnerCode;
+  if (f.city) where.city = { contains: f.city, mode: "insensitive" };
+  if (f.pincode) where.pincode = { startsWith: f.pincode };
+
+  if (f.q) {
+    where.OR = [
+      { reference: { contains: f.q, mode: "insensitive" } },
+      { customerName: { contains: f.q, mode: "insensitive" } },
+      { customerPhone: { contains: f.q } },
+      {
+        bill: {
+          is: { billNumber: { contains: f.q, mode: "insensitive" } },
+        },
+      },
+    ];
+  }
+  return where;
+}
+
+type ReadyRow = {
+  id: string;
+  reference: string;
+  orderRef: string;
+  billNumber: string | null;
+  placedAt: Date;
+  packedAt: Date | null;
+  customerName: string;
+  mobileMasked: string;
+  city: string;
+  stateName: string;
+  pincode: string;
+  courierName: string | null;
+  partnerCode: string | null;
+  parcelCount: number;
+  parcelCountKnown: boolean;
+  itemCount: number;
+  totalPaise: number;
+  status: string;
+};
+
+type ReadySummary = {
+  orders: number;
+  parcels: number;
+  items: number;
+  valuePaise: number;
+  /** Total weight in grams, or null when any product lacks a reliable weight. */
+  weightGrams: number | null;
+  /** True when the scan hit its cap and the summary is a lower bound. */
+  capped: boolean;
+};
+
+async function summariseReady(
+  where: Prisma.OrderWhereInput,
+): Promise<ReadySummary> {
+  const scan = await db.order.findMany({
+    where,
+    take: READY_SUMMARY_SCAN_CAP + 1,
+    select: {
+      totalPaise: true,
+      booking: { select: { parcelCount: true } },
+      items: {
+        select: {
+          quantity: true,
+          product: { select: { weightGrams: true } },
+        },
+      },
+    },
+  });
+  const capped = scan.length > READY_SUMMARY_SCAN_CAP;
+  const rows = capped ? scan.slice(0, READY_SUMMARY_SCAN_CAP) : scan;
+
+  let parcels = 0;
+  let items = 0;
+  let valuePaise = 0;
+  let weightGrams: number | null = 0;
+  for (const o of rows) {
+    parcels += o.booking?.parcelCount ?? 1;
+    valuePaise += o.totalPaise;
+    for (const it of o.items) {
+      items += it.quantity;
+      if (weightGrams !== null) {
+        if (it.product?.weightGrams == null) weightGrams = null;
+        else weightGrams += it.product.weightGrams * it.quantity;
+      }
+    }
+  }
+  return { orders: rows.length, parcels, items, valuePaise, weightGrams, capped };
+}
+
+const READY_ROW_SELECT = {
+  id: true,
+  reference: true,
+  placedAt: true,
+  customerName: true,
+  customerPhone: true,
+  city: true,
+  stateName: true,
+  pincode: true,
+  status: true,
+  totalPaise: true,
+  assignedPartnerCode: true,
+  bill: { select: { billNumber: true } },
+  booking: {
+    select: { packedAt: true, courierName: true, parcelCount: true },
+  },
+  items: { select: { quantity: true } },
+} satisfies Prisma.OrderSelect;
+
+type ReadyRowSource = Prisma.OrderGetPayload<{
+  select: typeof READY_ROW_SELECT;
+}>;
+
+function mapReadyRow(o: ReadyRowSource): ReadyRow {
+  return {
+    id: o.id,
+    reference: o.reference,
+    orderRef: opaqueRef(o.id),
+    billNumber: o.bill?.billNumber ?? null,
+    placedAt: o.placedAt,
+    packedAt: o.booking?.packedAt ?? null,
+    customerName: o.customerName,
+    mobileMasked: maskPhone(o.customerPhone),
+    city: o.city,
+    stateName: o.stateName,
+    pincode: o.pincode,
+    courierName: o.booking?.courierName ?? null,
+    partnerCode: o.assignedPartnerCode,
+    parcelCount: o.booking?.parcelCount ?? 1,
+    parcelCountKnown: o.booking?.parcelCount != null,
+    itemCount: o.items.reduce((s, it) => s + it.quantity, 0),
+    totalPaise: o.totalPaise,
+    status: o.status,
+  };
+}
+
+/** Paginated Ready to Book list + summary totals for the whole filtered set. */
+export async function getReadyToBookOrders(rawFilter: unknown) {
+  await requirePermission("booking.view");
+  const filter = parseInput(readyToBookFilterSchema, rawFilter ?? {});
+  const where = buildReadyToBookWhere(filter);
+
+  const [total, rows, summary] = await Promise.all([
+    db.order.count({ where }),
+    db.order.findMany({
+      where,
+      orderBy: [{ booking: { packedAt: "asc" } }, { placedAt: "asc" }],
+      skip: (filter.page - 1) * READY_PAGE_SIZE,
+      take: READY_PAGE_SIZE,
+      select: READY_ROW_SELECT,
+    }),
+    summariseReady(where),
+  ]);
+
+  return {
+    rows: rows.map(mapReadyRow),
+    summary,
+    filter,
+    total,
+    page: filter.page,
+    pageSize: READY_PAGE_SIZE,
+    pageCount: Math.max(1, Math.ceil(total / READY_PAGE_SIZE)),
+  };
+}
+
+/** The full filtered Ready to Book set (no pagination) for the consolidated
+ *  print report and the CSV export. Capped at {@link READY_EXPORT_CAP}. */
+export async function getReadyToBookForReport(rawFilter: unknown) {
+  await requirePermission("booking.view");
+  const filter = parseInput(readyToBookFilterSchema, rawFilter ?? {});
+  const where = buildReadyToBookWhere(filter);
+
+  const [rows, summary] = await Promise.all([
+    db.order.findMany({
+      where,
+      orderBy: [{ booking: { packedAt: "asc" } }, { placedAt: "asc" }],
+      take: READY_EXPORT_CAP,
+      select: READY_ROW_SELECT,
+    }),
+    summariseReady(where),
+  ]);
+
+  return { rows: rows.map(mapReadyRow), summary, filter };
+}
+
+// ---------------------------------------------------------------------------
+// Parcel cover print
+// ---------------------------------------------------------------------------
+
+export type CoverData = {
+  orderId: string;
+  orderRef: string;
+  billNumber: string | null;
+  status: string;
+  locale: string;
+  customerName: string;
+  customerPhone: string;
+  address: {
+    line1: string;
+    line2: string | null;
+    city: string;
+    state: string;
+    pincode: string;
+  };
+  courierName: string | null;
+  parcelCount: number;
+  parcelCountKnown: boolean;
+  itemCount: number;
+  notes: string | null;
+  trackingUrl: string | null;
+  seller: { name: string; address: string; phone: string };
+};
+
+const COVER_ELIGIBLE_STATUSES: OrderStatus[] = [
+  "PACKED",
+  "PARCEL_BOOKED",
+  "COMPLETED",
+];
+
+async function loadCover(orderId: string): Promise<CoverData> {
+  const order = await db.order.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true,
+      status: true,
+      paymentStatus: true,
+      locale: true,
+      customerName: true,
+      customerPhone: true,
+      addressLine1: true,
+      addressLine2: true,
+      city: true,
+      stateName: true,
+      pincode: true,
+      notes: true,
+      bill: { select: { billNumber: true } },
+      booking: { select: { courierName: true, parcelCount: true } },
+      items: { select: { quantity: true } },
+    },
+  });
+  if (!order) throw new NotFoundError("That order does not exist.");
+  if (
+    order.paymentStatus !== "PAID" ||
+    !COVER_ELIGIBLE_STATUSES.includes(order.status)
+  ) {
+    throw new AppError(
+      "CONFLICT",
+      "A parcel cover can only be printed once the order is paid and packed.",
+    );
+  }
+
+  // A tracking link the recipient can scan — the same customer-safe view as the
+  // rest of the label (no payment / internal data).
+  await ensureTrackingTokenForOrder(order.id).catch(() => undefined);
+  const trackingUrl = await getTrackingUrlForOrder(order.id).catch(() => null);
+
+  const settings = await getEffectiveSettings();
+
+  return {
+    orderId: order.id,
+    orderRef: opaqueRef(order.id),
+    billNumber: order.bill?.billNumber ?? null,
+    status: order.status,
+    locale: order.locale,
+    customerName: order.customerName,
+    customerPhone: order.customerPhone,
+    address: {
+      line1: order.addressLine1,
+      line2: order.addressLine2,
+      city: order.city,
+      state: order.stateName,
+      pincode: order.pincode,
+    },
+    courierName: order.booking?.courierName ?? null,
+    parcelCount: order.booking?.parcelCount ?? 1,
+    parcelCountKnown: order.booking?.parcelCount != null,
+    itemCount: order.items.reduce((s, it) => s + it.quantity, 0),
+    notes: order.notes && order.notes.trim() ? order.notes.trim() : null,
+    trackingUrl,
+    seller: {
+      name: settings["business.legalName"],
+      address: settings["business.address"],
+      phone: settings["business.phone"],
+    },
+  };
+}
+
+/** Cover data for a single order. */
+export async function getCoverData(raw: unknown): Promise<CoverData> {
+  await requirePermission("booking.view");
+  const { orderId } = parseInput(coverPrintSchema, raw);
+  return loadCover(orderId);
+}
+
+/** Cover data for a set of orders (bulk cover printing). Orders that are not
+ *  eligible are silently skipped so one bad id does not break a print run. */
+export async function getCoverDataBulk(raw: unknown): Promise<CoverData[]> {
+  await requirePermission("booking.view");
+  const { orderIds } = parseInput(coverBulkSchema, raw);
+  const out: CoverData[] = [];
+  for (const id of [...new Set(orderIds)]) {
+    try {
+      out.push(await loadCover(id));
+    } catch {
+      /* skip ineligible / missing */
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

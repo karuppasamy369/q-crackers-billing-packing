@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireAuth, hasPermission } from "@/server/rbac/authorize";
 import { getReportsBundle } from "@/server/services/reports-service";
 import { isAppError } from "@/server/http/errors";
@@ -56,6 +57,16 @@ export default async function ReportsPage({
       <PageHeader
         title="Reports"
         description="Sales, GST, payments and operations for a date range. Figures cover issued bills; cancelled bills are listed separately."
+        actions={
+          hasPermission(auth, "booking.view") ? (
+            <Link
+              href="/app/booking/ready-to-book"
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
+            >
+              Ready to Book →
+            </Link>
+          ) : undefined
+        }
       />
 
       <Card className="p-3">

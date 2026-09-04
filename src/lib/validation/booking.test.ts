@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { bookParcelSchema, bookingOrderIdSchema } from "./booking";
+import {
+  bookParcelSchema,
+  bookingOrderIdSchema,
+  readyToBookFilterSchema,
+  coverPrintSchema,
+  coverBulkSchema,
+} from "./booking";
 
 const ID = "11111111-1111-4111-8111-111111111111";
 const today = new Date().toISOString().slice(0, 10);
@@ -78,6 +84,129 @@ describe("bookParcelSchema", () => {
     expect(
       bookParcelSchema.safeParse({ ...valid, remarks: "x".repeat(1001) })
         .success,
+    ).toBe(false);
+  });
+});
+
+describe("readyToBookFilterSchema", () => {
+  it("accepts an empty filter and defaults page to 1", () => {
+    const r = readyToBookFilterSchema.safeParse({});
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.page).toBe(1);
+  });
+
+  it("accepts a fully populated filter", () => {
+    const r = readyToBookFilterSchema.safeParse({
+      from: "2026-01-01",
+      to: "2026-01-31",
+      courier: "Professional Couriers",
+      partnerCode: "pk",
+      city: "Sivakasi",
+      pincode: "62615",
+      q: "9876543210",
+      page: "2",
+    });
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.partnerCode).toBe("PK"); // uppercased
+      expect(r.data.page).toBe(2);
+    }
+  });
+
+  it("rejects a malformed date", () => {
+    expect(
+      readyToBookFilterSchema.safeParse({ from: "01-01-2026" }).success,
+    ).toBe(false);
+    expect(
+      readyToBookFilterSchema.safeParse({ from: "2026-13-40" }).success,
+    ).toBe(false);
+  });
+
+  it("rejects `from` after `to`", () => {
+    const r = readyToBookFilterSchema.safeParse({
+      from: "2026-02-01",
+      to: "2026-01-01",
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects a pincode with letters or more than 6 digits", () => {
+    expect(
+      readyToBookFilterSchema.safeParse({ pincode: "62615A" }).success,
+    ).toBe(false);
+    expect(
+      readyToBookFilterSchema.safeParse({ pincode: "1234567" }).success,
+    ).toBe(false);
+  });
+
+  it("rejects an out-of-range page", () => {
+    expect(readyToBookFilterSchema.safeParse({ page: "0" }).success).toBe(
+      false,
+    );
+    expect(
+      readyToBookFilterSchema.safeParse({ page: "100001" }).success,
+    ).toBe(false);
+  });
+});
+
+describe("coverPrintSchema", () => {
+  it("defaults parcels to 1 and accepts no `only`", () => {
+    const r = coverPrintSchema.safeParse({ orderId: ID });
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.parcels).toBe(1);
+      expect(r.data.only).toBeUndefined();
+    }
+  });
+
+  it("accepts a parcel count and a specific parcel to print", () => {
+    const r = coverPrintSchema.safeParse({
+      orderId: ID,
+      parcels: "3",
+      only: "2",
+    });
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.parcels).toBe(3);
+      expect(r.data.only).toBe(2);
+    }
+  });
+
+  it("rejects an invalid order id", () => {
+    expect(
+      coverPrintSchema.safeParse({ orderId: "not-a-uuid" }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a zero or absurdly large parcel count", () => {
+    expect(
+      coverPrintSchema.safeParse({ orderId: ID, parcels: "0" }).success,
+    ).toBe(false);
+    expect(
+      coverPrintSchema.safeParse({ orderId: ID, parcels: "51" }).success,
+    ).toBe(false);
+  });
+});
+
+describe("coverBulkSchema", () => {
+  it("accepts a list of order ids", () => {
+    const r = coverBulkSchema.safeParse({ orderIds: [ID] });
+    expect(r.success).toBe(true);
+  });
+
+  it("rejects an empty list", () => {
+    expect(coverBulkSchema.safeParse({ orderIds: [] }).success).toBe(false);
+  });
+
+  it("rejects more than 100 ids", () => {
+    expect(
+      coverBulkSchema.safeParse({ orderIds: Array(101).fill(ID) }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a non-uuid entry", () => {
+    expect(
+      coverBulkSchema.safeParse({ orderIds: [ID, "nope"] }).success,
     ).toBe(false);
   });
 });

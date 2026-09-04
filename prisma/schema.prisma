@@ -575,6 +575,8 @@ model Order {
   @@index([status])
   @@index([paymentStatus])
   @@index([placedAt])
+  /// Ready-to-Book and other workflow-stage queries filter on both.
+  @@index([status, paymentStatus])
   @@map("orders")
 }
 

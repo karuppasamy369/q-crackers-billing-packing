@@ -89,6 +89,16 @@ export default async function BookingDetailPage({
         >
           {order.status.replace(/_/g, " ")}
         </span>
+        {["PACKED", "PARCEL_BOOKED", "COMPLETED"].includes(order.status) ? (
+          <a
+            href={`/print/cover/${order.id}?parcels=${b?.parcelCount ?? 1}`}
+            target="_blank"
+            rel="noreferrer"
+            className="ml-auto rounded-md border border-gray-300 px-3 py-1.5 font-medium hover:bg-gray-50"
+          >
+            🖨 Print Cover
+          </a>
+        ) : null}
       </div>
 
       {!inBookingScope ? (

@@ -37,3 +37,4 @@ developer's machine at apply time.
 | `20260904180000_phase7_tracking_tokens` | tracking_tokens (hash-only public tracking credential, one per order); CHECK that `tokenHash` is a 64-char SHA-256 hex digest |
 | `20260904200000_phase8_notifications` | notification_outbox + enums; `tracking_tokens.linkVersion`; `orders.locale`; CHECKs on attempt counters, E.164 recipient, SENT-has-timestamp |
 | `20260904220000_phase9_reviews` | reviews table + `ReviewStatus` enum; CHECKs on rating (1–5), comment length, moderation consistency |
+| `20260904240000_ready_to_book_index` | `orders(status, paymentStatus)` compound index — backs the Ready to Book query. Additive, non-destructive; no new tables or columns. |

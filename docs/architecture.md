@@ -202,6 +202,48 @@ private bucket (`lr-docs/`), validated by magic bytes + `%%EOF` + a
 (`lr.download`, audited) or a customer tracking route (see Phase 7). The customer
 tracking page shows "Download LR Copy" only once a current LR document exists.
 
+## Ready to Book + Cover Print (Phase 6 extension)
+
+Two additions to the existing booking workflow — no new order status, no
+parallel state machine, no new tables:
+
+- **Ready to Book** (`/app/booking/ready-to-book`, `booking.view`) is a
+  *derived view*, computed at query time as `status = 'PACKED' AND
+  paymentStatus = 'PAID'` (`getReadyToBookOrders` /
+  `getReadyToBookForReport` in `booking-service.ts`). It needs no state of
+  its own: an order appears the moment `markOrderPacked` runs and disappears
+  the moment `confirmParcelBooked` succeeds (or the order is cancelled) — both
+  unchanged from Phase 6. A single compound index,
+  `orders(status, paymentStatus)`, backs the query. Filters (date range on
+  `booking.packedAt`, courier — substring match, partner code, city, pincode —
+  prefix match, free-text across reference / bill number / customer name /
+  phone) are validated server-side (`readyToBookFilterSchema`); an invalid
+  range (`from` after `to`) is rejected with `VALIDATION`, never silently
+  clamped. Summary totals (orders, parcels, items, value) are computed from
+  the same filtered set the table shows, capped at 5,000 scanned rows (10,000
+  for the export/report) so a broad filter can't force an unbounded scan —
+  a capped result says so rather than understating the total silently.
+  `[Print Consolidated Report]` and `[Export CSV]` (`toCsv` in
+  `src/lib/csv.ts` — dependency-free RFC-4180 + UTF-8 BOM) both re-run the same
+  query with the same filters, so what prints/exports always matches what's
+  on screen. Bulk selection on the table drives `/print/covers?ids=...` —
+  presentation only, no bulk mutation.
+- **Cover Print** (`/print/cover/[orderId]`, `/print/covers`, `booking.view`)
+  renders a customer-safe parcel label from the same order the tracking page
+  already shows: opaque order ref (`QC-<hash8>`, not the raw id or the
+  checkout `reference`), customer name/phone/address, courier, item count, an
+  optional order note, "PARCEL n of N" (`N` = `booking.parcelCount` once set
+  by `confirmParcelBooked`, else 1), and a QR of the same
+  `getTrackingUrlForOrder` link shown to the customer. It deliberately excludes
+  `booking.remarks` (internal-only) and anything payment-related. Eligibility
+  is server-checked (`PAID` + `PACKED`/`PARCEL_BOOKED`/`COMPLETED`) —
+  `getCoverData` throws `CONFLICT` otherwise, regardless of what a client
+  requests. The `(print)` route group carries no console/storefront chrome; each
+  page gates itself with `requireAuth` + `hasPermission("booking.view")` since
+  it sits outside the `(console)` layout's own check. `@media print` rules
+  (`src/app/(print)/layout.tsx`) fix A4 margins, hide the on-screen toolbar,
+  and repeat table headers across pages for the consolidated report.
+
 ## Data model — later phases (planned)
 
 `payment_webhook_events`, `notification_receipts` (per-recipient delivery
