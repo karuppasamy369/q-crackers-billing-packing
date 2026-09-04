@@ -756,6 +756,15 @@ model PartnerPaymentAccount {
   instructions       String?
   isActive           Boolean @default(true)
 
+  /// Automatic-verification PSP (Phase 10). Null = not onboarded yet — this
+  /// partner still uses the static-QR / manual-verify flow (hybrid rollout).
+  /// "CASHFREE" today; the app-id/secret-key/webhook secret for that provider
+  /// live only in env vars (CASHFREE_APP_ID_<CODE> etc.), never in this table.
+  pspProvider String?
+  /// The PSP's client/app id for this partner. Not secret — safe to store and
+  /// show back to the partner for reference.
+  pspAccountId String?
+
   updatedById String?  @db.Uuid
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

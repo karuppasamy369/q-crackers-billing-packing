@@ -43,6 +43,28 @@ boundary — the UI hiding a control is cosmetic only.
   partner immediately after. Expired unpaid holds are swept by
   `/api/cron/release-holds` (Bearer `CRON_SECRET`) — but an order with a
   `SUBMITTED` or `VERIFIED` payment is never auto-failed.
+- **Payments (Phase 10 — automatic verification, hybrid rollout)** — each
+  partner may additionally onboard their own Cashfree Payment Gateway account
+  (`PartnerPaymentAccount.pspProvider = "CASHFREE"`; credentials are env vars
+  keyed by partner code — `CASHFREE_APP_ID_<CODE>` /
+  `CASHFREE_SECRET_KEY_<CODE>` — never the database). Onboarded: checkout
+  creates a Cashfree order (`createCashfreeCheckoutSession`, our
+  `order.reference` passed as Cashfree's own `order_id` — no extra column
+  needed to correlate a webhook back to an order) and the pay page renders
+  Cashfree's own hosted checkout instead of a static QR. A payment is marked
+  `PAID` only by `/api/payments/webhook/cashfree` (HMAC-SHA256 signature
+  verified with that partner's own secret key *before* anything in the body is
+  trusted) or by the `/api/cron/reconcile-cashfree` sweep polling Cashfree's
+  order-payments API for anything a webhook missed — never by a client
+  redirect or a customer claim. Not yet onboarded: the partner keeps the
+  Phase 5 static-QR / manual-verify flow below, unchanged — the two coexist
+  per partner. `payments.confirm_manual` remains available for every partner
+  regardless of PSP status, as an explicit fallback (PSP downtime, bank
+  transfers). Both paths funnel through one shared "mark paid" transaction
+  (`applyVerifiedPayment` in `payments-service.ts`) — stock commit, order
+  status, history, audit, and bill issuance are identical either way; only
+  `verificationMethod` (`MANUAL` / `WEBHOOK` / `PSP_API`) and the actor
+  (a human vs `{kind:"system"}`) differ.
 - **StorageProvider** — Supabase Storage private buckets. Random keys, signed
   URLs minted server-side after an authorization check.
 - **NotificationProvider** — WhatsApp. Business events write to

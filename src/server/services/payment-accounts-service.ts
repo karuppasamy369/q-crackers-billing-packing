@@ -24,6 +24,9 @@ export type PublicPaymentAccount = {
   instructions: string | null;
   hasStaticQr: boolean;
   isActive: boolean;
+  /** Phase 10 — set once this partner has onboarded with a PSP for automatic
+   *  verification. Null = still on the static-QR / manual-verify flow. */
+  pspProvider: string | null;
 };
 
 async function ensureAccount(userId: string) {
@@ -58,6 +61,8 @@ export async function updateMyPaymentAccount(raw: unknown) {
       payeeName: input.payeeName || null,
       instructions: input.instructions || null,
       isActive: input.isActive,
+      pspProvider: input.pspProvider || null,
+      pspAccountId: input.pspAccountId || null,
       updatedById: auth.user.id,
     },
   });
@@ -73,6 +78,7 @@ export async function updateMyPaymentAccount(raw: unknown) {
         upiVpa: { from: before.upiVpa, to: updated.upiVpa },
         payeeName: { from: before.payeeName, to: updated.payeeName },
         isActive: { from: before.isActive, to: updated.isActive },
+        pspProvider: { from: before.pspProvider, to: updated.pspProvider },
       },
     },
     ctx,
@@ -156,6 +162,7 @@ export async function getPublicPaymentAccountForPartner(
     instructions: account.instructions,
     hasStaticQr: Boolean(account.staticQrStorageKey),
     isActive: account.isActive,
+    pspProvider: account.pspProvider,
   };
 }
 

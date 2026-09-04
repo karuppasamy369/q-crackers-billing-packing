@@ -31,6 +31,8 @@ export default async function PaymentAccountPage() {
               payeeName: account.payeeName ?? "",
               instructions: account.instructions ?? "",
               isActive: account.isActive,
+              pspProvider: account.pspProvider ?? "",
+              pspAccountId: account.pspAccountId ?? "",
             }}
           />
           <p className="mt-4 text-xs text-gray-500">

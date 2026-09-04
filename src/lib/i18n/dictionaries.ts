@@ -91,6 +91,10 @@ export type Dictionary = {
     noAccount: string;
     viewOrder: string;
     error: string;
+    /** Phase 10 — Cashfree automatic-verification checkout. */
+    payNow: string;
+    payNowStarting: string;
+    autoVerifyNote: string;
   };
   confirmation: {
     title: string;
@@ -283,6 +287,9 @@ const en: Dictionary = {
       "Online payment details are not available for this order. We will contact you on your mobile number to arrange payment.",
     viewOrder: "View order details",
     error: "We could not record your payment. Please try again.",
+    payNow: "Pay now",
+    payNowStarting: "Starting…",
+    autoVerifyNote: "Pay securely — your payment is verified automatically.",
   },
   confirmation: {
     title: "Order received",
@@ -485,6 +492,10 @@ const ta: Dictionary = {
       "இந்த ஆர்டருக்கு ஆன்லைன் பணம் செலுத்தும் விவரங்கள் கிடைக்கவில்லை. பணம் செலுத்த ஏற்பாடு செய்ய உங்கள் கைபேசி எண்ணில் தொடர்பு கொள்வோம்.",
     viewOrder: "ஆர்டர் விவரங்களைப் பார்",
     error: "உங்கள் பணத்தைப் பதிவு செய்ய முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
+    payNow: "இப்போது செலுத்து",
+    payNowStarting: "தொடங்குகிறது…",
+    autoVerifyNote:
+      "பாதுகாப்பாக செலுத்துங்கள் — உங்கள் பணம் தானாகவே சரிபார்க்கப்படும்.",
   },
   confirmation: {
     title: "ஆர்டர் பெறப்பட்டது",

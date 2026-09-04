@@ -72,7 +72,20 @@ export const paymentAccountSchema = z.object({
         : v,
     z.boolean(),
   ),
+  /** Phase 10 — which automatic-verification PSP this partner has onboarded
+   *  with, if any. Empty = not onboarded (static-QR / manual-verify flow). No
+   *  secret ever travels through this schema — only a display-only account id. */
+  pspProvider: z.enum(["CASHFREE", ""]).optional().default(""),
+  pspAccountId: z.string().trim().max(200).optional().or(z.literal("")),
 });
 export type PaymentAccountInput = z.infer<typeof paymentAccountSchema>;
+
+/** A customer opening the Cashfree checkout for an order. */
+export const cashfreeSessionSchema = z.object({
+  reference: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z0-9_-]{16,64}$/),
+});
 
 export const paymentIdSchema = z.object({ id: uuidSchema });

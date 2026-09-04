@@ -4,7 +4,10 @@ import { cookies } from "next/headers";
 
 import { quoteCart, type CartQuote } from "@/server/services/pricing-service";
 import { createOnlineOrder } from "@/server/services/orders-service";
-import { submitPayment } from "@/server/services/payments-service";
+import {
+  submitPayment,
+  createCashfreeCheckoutSession,
+} from "@/server/services/payments-service";
 import { rotateTrackingTokenByReference } from "@/server/services/tracking-service";
 import { env } from "@/env";
 import { isAppError } from "@/server/http/errors";
@@ -105,6 +108,28 @@ export async function revealTrackingLinkAction(
       error: isAppError(err)
         ? err.publicMessage
         : "We could not generate a tracking link. Please try again.",
+    };
+  }
+}
+
+export type CashfreeSessionState =
+  | { ok: true; paymentSessionId: string }
+  | { ok: false; error: string };
+
+/** Create (or reuse) a Cashfree checkout session for this order. Never marks
+ *  anything paid — only the webhook / reconciliation sweep does that. */
+export async function createCashfreeSessionAction(
+  reference: string,
+): Promise<CashfreeSessionState> {
+  try {
+    const { paymentSessionId } = await createCashfreeCheckoutSession(reference);
+    return { ok: true, paymentSessionId };
+  } catch (err) {
+    return {
+      ok: false,
+      error: isAppError(err)
+        ? err.publicMessage
+        : "We could not start the payment. Please try again.",
     };
   }
 }

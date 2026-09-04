@@ -34,6 +34,8 @@ export function PaymentAccountForm({
     payeeName: string;
     instructions: string;
     isActive: boolean;
+    pspProvider: string;
+    pspAccountId: string;
   };
 }) {
   const router = useRouter();
@@ -93,6 +95,41 @@ export function PaymentAccountForm({
         />
         Account active (show these details at checkout)
       </label>
+
+      <div className="border-t border-gray-100 pt-3">
+        <label htmlFor="pspProvider" className="text-sm font-medium">
+          Automatic verification (optional)
+        </label>
+        <select
+          id="pspProvider"
+          name="pspProvider"
+          defaultValue={defaults.pspProvider}
+          className={field}
+        >
+          <option value="">Not set up — use the QR above, verify manually</option>
+          <option value="CASHFREE">Cashfree</option>
+        </select>
+        <p className="mt-1 text-xs text-gray-500">
+          Once you&apos;ve created your own Cashfree account and its API keys
+          have been added to the server (ask a partner with server access),
+          select it here — checkout starts using Cashfree&apos;s own checkout
+          and payments verify themselves automatically, no more clicking
+          Verify. Until then this stays off and nothing changes.
+        </p>
+        {defaults.pspProvider ? (
+          <div className="mt-2">
+            <label htmlFor="pspAccountId" className="text-sm font-medium">
+              Cashfree App ID (for your reference — not secret)
+            </label>
+            <input
+              id="pspAccountId"
+              name="pspAccountId"
+              defaultValue={defaults.pspAccountId}
+              className={field}
+            />
+          </div>
+        ) : null}
+      </div>
 
       <Status state={state} />
 
