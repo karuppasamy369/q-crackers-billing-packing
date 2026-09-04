@@ -28,43 +28,29 @@ boundary — the UI hiding a control is cosmetic only.
 
 ## External integrations (later phases, all behind interfaces)
 
-- **Payments (Phase 5 — implemented)** — provider-agnostic UPI, NO Razorpay.
-  Per-partner `PartnerPaymentAccount` (VPA / payee / optional static QR).
-  Checkout renders an amount-filled UPI QR + deep link for the order's assigned
-  partner; the customer submits their UTR (`payments` row, status `SUBMITTED`);
-  an authorised partner verifies it (`payments.confirm_manual`) against the
-  collecting account. `PaymentVerifier` interface
-  (`src/server/integrations/payment/verifier.ts`) ships `MANUAL` only, with
-  `lookup` / `parseWebhook` hooks for a future bank/PSP adapter — a verified
-  payment always ends as `PaymentStatus.VERIFIED` + a `verificationMethod`.
-  Verification asserts right-order + amount-match + UTR-once idempotency, then
-  in one txn: commit reserved stock as a `SALE` movement, mark the order `PAID`,
-  write history + audit; the bill is auto-issued under the order's assigned
-  partner immediately after. Expired unpaid holds are swept by
+- **Payments (Phase 5, extended Phase 10) — provider-agnostic UPI, NO
+  Razorpay, no payment-gateway integration.** Per-partner
+  `PartnerPaymentAccount` (VPA / payee / optional static QR). Checkout renders
+  an amount-filled UPI QR + deep link for the order's assigned partner; the
+  customer submits their UTR (required) and may optionally attach a payment
+  screenshot as extra evidence (`payments.screenshotStorageKey`, validated the
+  same way any other image upload in the app is and stored in the private
+  bucket) — a `payments` row is created with status `SUBMITTED`; an authorised
+  partner verifies it (`payments.confirm_manual`) against their own bank/UPI
+  app, the UTR, and the screenshot if attached. The actual "mark paid" work —
+  commit reserved stock as a `SALE` movement, mark the order `PAID`, write
+  history + audit, auto-issue the bill under the order's assigned partner — is
+  one shared transaction (`applyVerifiedPayment` in `payments-service.ts`),
+  used by this manual path today and available for a future automatic path to
+  reuse without change. `PaymentVerifier`
+  (`src/server/integrations/payment/verifier.ts`) is an empty extension point
+  for that future: a `lookup(orderId, amountPaise)` hook a bank/PSP adapter
+  could implement later, with nothing currently registered — a Cashfree
+  integration was built and evaluated, then reverted (see `docs/decisions.md`
+  #22); no PSP-specific code remains. Verification asserts right-order +
+  amount-match + UTR-once idempotency. Expired unpaid holds are swept by
   `/api/cron/release-holds` (Bearer `CRON_SECRET`) — but an order with a
   `SUBMITTED` or `VERIFIED` payment is never auto-failed.
-- **Payments (Phase 10 — automatic verification, hybrid rollout)** — each
-  partner may additionally onboard their own Cashfree Payment Gateway account
-  (`PartnerPaymentAccount.pspProvider = "CASHFREE"`; credentials are env vars
-  keyed by partner code — `CASHFREE_APP_ID_<CODE>` /
-  `CASHFREE_SECRET_KEY_<CODE>` — never the database). Onboarded: checkout
-  creates a Cashfree order (`createCashfreeCheckoutSession`, our
-  `order.reference` passed as Cashfree's own `order_id` — no extra column
-  needed to correlate a webhook back to an order) and the pay page renders
-  Cashfree's own hosted checkout instead of a static QR. A payment is marked
-  `PAID` only by `/api/payments/webhook/cashfree` (HMAC-SHA256 signature
-  verified with that partner's own secret key *before* anything in the body is
-  trusted) or by the `/api/cron/reconcile-cashfree` sweep polling Cashfree's
-  order-payments API for anything a webhook missed — never by a client
-  redirect or a customer claim. Not yet onboarded: the partner keeps the
-  Phase 5 static-QR / manual-verify flow below, unchanged — the two coexist
-  per partner. `payments.confirm_manual` remains available for every partner
-  regardless of PSP status, as an explicit fallback (PSP downtime, bank
-  transfers). Both paths funnel through one shared "mark paid" transaction
-  (`applyVerifiedPayment` in `payments-service.ts`) — stock commit, order
-  status, history, audit, and bill issuance are identical either way; only
-  `verificationMethod` (`MANUAL` / `WEBHOOK` / `PSP_API`) and the actor
-  (a human vs `{kind:"system"}`) differ.
 - **StorageProvider** — Supabase Storage private buckets. Random keys, signed
   URLs minted server-side after an authorization check.
 - **NotificationProvider** — WhatsApp. Business events write to

@@ -75,6 +75,20 @@ export function PayForm({
         </div>
       </div>
 
+      <div>
+        <label htmlFor="screenshot" className="text-sm font-medium">
+          {tp.screenshotOptional}
+        </label>
+        <input
+          id="screenshot"
+          name="screenshot"
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          className="mt-1 block w-full text-sm"
+        />
+        <p className="mt-1 text-xs text-gray-500">{tp.screenshotHelp}</p>
+      </div>
+
       {state?.ok === false ? (
         <p
           role="alert"

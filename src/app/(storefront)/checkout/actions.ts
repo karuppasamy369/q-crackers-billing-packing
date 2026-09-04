@@ -4,10 +4,7 @@ import { cookies } from "next/headers";
 
 import { quoteCart, type CartQuote } from "@/server/services/pricing-service";
 import { createOnlineOrder } from "@/server/services/orders-service";
-import {
-  submitPayment,
-  createCashfreeCheckoutSession,
-} from "@/server/services/payments-service";
+import { submitPayment } from "@/server/services/payments-service";
 import { rotateTrackingTokenByReference } from "@/server/services/tracking-service";
 import { env } from "@/env";
 import { isAppError } from "@/server/http/errors";
@@ -112,38 +109,26 @@ export async function revealTrackingLinkAction(
   }
 }
 
-export type CashfreeSessionState =
-  | { ok: true; paymentSessionId: string }
-  | { ok: false; error: string };
-
-/** Create (or reuse) a Cashfree checkout session for this order. Never marks
- *  anything paid — only the webhook / reconciliation sweep does that. */
-export async function createCashfreeSessionAction(
-  reference: string,
-): Promise<CashfreeSessionState> {
-  try {
-    const { paymentSessionId } = await createCashfreeCheckoutSession(reference);
-    return { ok: true, paymentSessionId };
-  } catch (err) {
-    return {
-      ok: false,
-      error: isAppError(err)
-        ? err.publicMessage
-        : "We could not start the payment. Please try again.",
-    };
-  }
-}
-
 export async function submitPaymentAction(
   _prev: PaymentActionState,
   formData: FormData,
 ): Promise<PaymentActionState> {
   try {
-    const result = await submitPayment(formData.get("reference"), {
-      upiReference: formData.get("upiReference"),
-      payerName: formData.get("payerName") || undefined,
-      payerVpa: formData.get("payerVpa") || undefined,
-    });
+    const file = formData.get("screenshot");
+    const screenshot =
+      file instanceof File && file.size > 0
+        ? { bytes: new Uint8Array(await file.arrayBuffer()), filename: file.name }
+        : null;
+
+    const result = await submitPayment(
+      formData.get("reference"),
+      {
+        upiReference: formData.get("upiReference"),
+        payerName: formData.get("payerName") || undefined,
+        payerVpa: formData.get("payerVpa") || undefined,
+      },
+      screenshot,
+    );
     return { ok: true, status: result.status };
   } catch (err) {
     return {

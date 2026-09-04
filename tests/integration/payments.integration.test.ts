@@ -18,6 +18,7 @@ import {
   verifyPayment,
   listPayments,
   releaseExpiredHolds,
+  getPaymentScreenshotBytes,
 } from "@/server/services/payments-service";
 import {
   getMyPaymentAccount,
@@ -76,9 +77,36 @@ async function placeOrder(
   });
 }
 
+const PNG_BYTES = new Uint8Array([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0,
+]);
+const NOT_AN_IMAGE = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // "%PDF"
+
+async function denyPermission(userCode: string, permissionKey: string) {
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { code: userCode },
+  });
+  const permission = await prisma.permission.findUniqueOrThrow({
+    where: { key: permissionKey },
+  });
+  await prisma.userPermission.upsert({
+    where: {
+      userId_permissionId: { userId: user.id, permissionId: permission.id },
+    },
+    create: {
+      userId: user.id,
+      permissionId: permission.id,
+      effect: "DENY",
+      note: "test",
+    },
+    update: { effect: "DENY" },
+  });
+}
+
 d("Phase 5 — payments", () => {
   beforeEach(async () => {
     await resetCatalogue(prisma);
+    await prisma.userPermission.deleteMany();
     _resetRateLimits();
     logout();
     productSeq = 0;
@@ -178,6 +206,106 @@ d("Phase 5 — payments", () => {
       });
       expect(payments).toHaveLength(1);
       expect(payments[0]!.upiReference).toBe("222222222222");
+    });
+
+    it("accepts an optional payment screenshot alongside the UTR", async () => {
+      const p = await makeProduct(10);
+      const order = await placeOrder(p.slug, 1, "psr");
+      const res = await submitPayment(
+        order.reference,
+        { upiReference: "300000000001" },
+        { bytes: PNG_BYTES, filename: "proof.png" },
+      );
+      expect(res.status).toBe("submitted");
+
+      const payment = await prisma.payment.findFirstOrThrow({
+        where: { orderId: order.id },
+      });
+      expect(payment.screenshotStorageKey).not.toBeNull();
+
+      await loginAs(prisma, "PK");
+      const bytes = await getPaymentScreenshotBytes({ id: payment.id });
+      logout();
+      expect(bytes).not.toBeNull();
+      expect(bytes!.contentType).toBe("image/png");
+    });
+
+    it("still works with no screenshot — it is genuinely optional", async () => {
+      const p = await makeProduct(10);
+      const order = await placeOrder(p.slug, 1, "psr");
+      const res = await submitPayment(order.reference, {
+        upiReference: "300000000002",
+      });
+      expect(res.status).toBe("submitted");
+
+      const payment = await prisma.payment.findFirstOrThrow({
+        where: { orderId: order.id },
+      });
+      expect(payment.screenshotStorageKey).toBeNull();
+
+      await loginAs(prisma, "PK");
+      const bytes = await getPaymentScreenshotBytes({ id: payment.id });
+      logout();
+      expect(bytes).toBeNull();
+    });
+
+    it("rejects a non-image file presented as a screenshot; the UTR is not recorded either", async () => {
+      const p = await makeProduct(10);
+      const order = await placeOrder(p.slug, 1, "psr");
+      await expect(
+        submitPayment(
+          order.reference,
+          { upiReference: "300000000003" },
+          { bytes: NOT_AN_IMAGE, filename: "proof.pdf" },
+        ),
+      ).rejects.toMatchObject({ code: "VALIDATION" });
+
+      const payment = await prisma.payment.findFirst({
+        where: { orderId: order.id },
+      });
+      expect(payment).toBeNull();
+    });
+
+    it("a later re-submission can attach a screenshot to an existing SUBMITTED payment", async () => {
+      const p = await makeProduct(10);
+      const order = await placeOrder(p.slug, 1, "psr");
+      await submitPayment(order.reference, { upiReference: "300000000004" });
+      await submitPayment(
+        order.reference,
+        { upiReference: "300000000004" },
+        { bytes: PNG_BYTES, filename: "proof.png" },
+      );
+
+      const payment = await prisma.payment.findFirstOrThrow({
+        where: { orderId: order.id },
+      });
+      expect(payment.screenshotStorageKey).not.toBeNull();
+
+      const audit = await prisma.auditLog.findFirst({
+        where: { action: "payment.submit", entityId: payment.id },
+        orderBy: { createdAt: "desc" },
+      });
+      expect((audit?.details as { hasScreenshot?: boolean } | null)?.hasScreenshot).toBe(true);
+    });
+
+    it("getPaymentScreenshotBytes requires payments.view", async () => {
+      const p = await makeProduct(10);
+      const order = await placeOrder(p.slug, 1, "psr");
+      await submitPayment(
+        order.reference,
+        { upiReference: "300000000005" },
+        { bytes: PNG_BYTES, filename: "proof.png" },
+      );
+      const payment = await prisma.payment.findFirstOrThrow({
+        where: { orderId: order.id },
+      });
+
+      await denyPermission("S1", "payments.view");
+      await loginAs(prisma, "S1");
+      await expect(
+        getPaymentScreenshotBytes({ id: payment.id }),
+      ).rejects.toMatchObject({ code: "FORBIDDEN" });
+      logout();
     });
   });
 

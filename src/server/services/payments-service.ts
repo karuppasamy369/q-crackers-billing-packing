@@ -23,26 +23,18 @@ import {
   submitPaymentSchema,
   verifyPaymentSchema,
   paymentIdSchema,
-  cashfreeSessionSchema,
   type SubmitPaymentInput,
 } from "@/lib/validation/payment";
-import {
-  getPublicPaymentAccountForPartner,
-} from "@/server/services/payment-accounts-service";
+import { getPublicPaymentAccountForPartner } from "@/server/services/payment-accounts-service";
 import {
   issueBillForOrderCore,
   safeGeneratePdf,
 } from "@/server/services/billing-service";
-import { getVerifier } from "@/server/integrations/payment/verifier";
-import {
-  getCashfreeCredentials,
-  createCashfreeOrder,
-  verifyCashfreeWebhookSignature,
-  cashfreeWebhookSchema,
-  peekWebhookOrderId,
-} from "@/server/integrations/payment/cashfree";
 import { enqueueNotificationSafe } from "@/server/services/notifications-service";
+import { validateImageUpload } from "@/lib/image-validation";
+import { getStorage } from "@/server/integrations/storage";
 import { env } from "@/env";
+import { randomUUID } from "node:crypto";
 
 const PAGE_SIZE = 25;
 const SUBMIT_RATE_MAX = 6;
@@ -79,15 +71,13 @@ export type PaymentPageContext = {
     payeeName: string | null;
     instructions: string | null;
     hasStaticQr: boolean;
-    /** Phase 10 — set when this partner has onboarded with a PSP; the pay
-     *  page renders that PSP's own checkout instead of the static QR. */
-    pspProvider: string | null;
   } | null;
   upiUri: string | null;
   payment: {
     status: string;
     upiReference: string | null;
     submittedAt: Date | null;
+    hasScreenshot: boolean;
   } | null;
 };
 
@@ -150,7 +140,6 @@ export async function getPaymentPageContext(
           payeeName: partnerAccount.payeeName,
           instructions: partnerAccount.instructions,
           hasStaticQr: partnerAccount.hasStaticQr,
-          pspProvider: partnerAccount.pspProvider,
         }
       : null,
     upiUri,
@@ -159,19 +148,47 @@ export async function getPaymentPageContext(
           status: payment.status,
           upiReference: payment.upiReference,
           submittedAt: payment.submittedAt,
+          hasScreenshot: Boolean(payment.screenshotStorageKey),
         }
       : null,
   };
 }
 
+/** A payment screenshot the customer optionally attaches alongside their
+ *  UTR — never required, always validated the same way as any other image
+ *  upload in the app before it's stored. */
+export type PaymentScreenshotInput = {
+  bytes: Uint8Array;
+  filename: string;
+};
+
+/** Validate and store an optional payment screenshot. Same image validation
+ *  (magic bytes, size cap) already used for a partner's static QR upload —
+ *  no new rules invented for this. Throws `ValidationError` on a bad file. */
+async function storePaymentScreenshot(
+  screenshot: PaymentScreenshotInput,
+): Promise<string> {
+  const check = validateImageUpload(screenshot.bytes, env.STORAGE_MAX_IMAGE_BYTES);
+  if (!check.ok) throw new ValidationError(check.error);
+
+  const storage = getStorage();
+  const key = `payment-screenshots/${randomUUID()}.${check.extension}`;
+  await storage.put(key, screenshot.bytes, check.contentType);
+  return key;
+}
+
 /**
- * The customer states they have paid and supplies their UPI transaction id.
- * This records a SUBMITTED payment — it does NOT mark the order paid. An
- * authorised person (or, later, a PSP lookup / webhook) verifies it.
+ * The customer states they have paid, supplies their UPI transaction id
+ * (required), and may optionally attach a payment screenshot as extra
+ * evidence. This records a SUBMITTED payment — it does NOT mark the order
+ * paid. An authorised person checks it (their own bank/UPI app, the UTR, and
+ * the screenshot if attached) and verifies it (or, later, a PSP lookup /
+ * webhook could).
  */
 export async function submitPayment(
   rawReference: unknown,
   raw: unknown,
+  screenshot?: PaymentScreenshotInput | null,
 ): Promise<{ status: "submitted" | "already_submitted" | "already_paid" }> {
   const ctx = await getRequestContext();
   const rl = rateLimit(
@@ -228,6 +245,12 @@ export async function submitPayment(
     );
   }
 
+  // Validate + store the optional screenshot before touching the payment row
+  // — a bad file must fail without leaving a half-updated record behind.
+  const screenshotKey = screenshot
+    ? await storePaymentScreenshot(screenshot)
+    : null;
+
   if (existing) {
     await db.payment.update({
       where: { id: existing.id },
@@ -237,6 +260,7 @@ export async function submitPayment(
         payerName: payerName ?? existing.payerName,
         payerVpa: payerVpa ?? existing.payerVpa,
         submittedAt: existing.submittedAt ?? new Date(),
+        screenshotStorageKey: screenshotKey ?? existing.screenshotStorageKey,
       },
     });
     await recordAudit(
@@ -246,7 +270,11 @@ export async function submitPayment(
         summary: `Payment details updated for order ${order.reference}`,
         entityType: "Payment",
         entityId: existing.id,
-        details: { reference: order.reference, upiReference: utr },
+        details: {
+          reference: order.reference,
+          upiReference: utr,
+          hasScreenshot: Boolean(screenshotKey ?? existing.screenshotStorageKey),
+        },
       },
       ctx,
     );
@@ -268,6 +296,7 @@ export async function submitPayment(
       payeeName: partnerAccount?.payeeName ?? null,
       assignedPartnerId: order.assignedPartnerId,
       submittedAt: new Date(),
+      screenshotStorageKey: screenshotKey,
     },
   });
 
@@ -280,6 +309,7 @@ export async function submitPayment(
       entityId: created.id,
       details: {
         reference: order.reference,
+        hasScreenshot: Boolean(screenshotKey),
         upiReference: utr,
         amountPaise: order.totalPaise,
       },
@@ -604,326 +634,6 @@ export async function verifyPayment(raw: unknown) {
 }
 
 // ---------------------------------------------------------------------------
-// Cashfree automatic verification (Phase 10)
-//
-// Only reachable for an order whose assigned partner has onboarded with
-// Cashfree (PartnerPaymentAccount.pspProvider = "CASHFREE"). Every other
-// order keeps using the static-QR + submitPayment/verifyPayment flow above,
-// unchanged (hybrid rollout).
-// ---------------------------------------------------------------------------
-
-async function resolveCashfreePartner(order: {
-  id: string;
-  reference: string;
-  status: string;
-  totalPaise: number;
-  assignedPartnerId: string | null;
-}) {
-  if (!order.assignedPartnerId) return null;
-  const account = await getPublicPaymentAccountForPartner(
-    order.assignedPartnerId,
-  );
-  if (!account || account.pspProvider !== "CASHFREE") return null;
-  const creds = getCashfreeCredentials(account.partnerCode);
-  if (!creds) {
-    logger.error("cashfree.not_configured", {
-      orderId: order.id,
-      partnerCode: account.partnerCode,
-    });
-    return null;
-  }
-  return { partnerCode: account.partnerCode, creds };
-}
-
-/**
- * Create (or reuse) a Cashfree order for this order's payment and return the
- * `payment_session_id` the checkout page's Cashfree SDK needs. Does not mark
- * anything paid — only the webhook (or the reconciliation sweep) does that.
- */
-export async function createCashfreeCheckoutSession(rawReference: unknown) {
-  const { reference } = cashfreeSessionSchema.parse({
-    reference: rawReference,
-  });
-  const ctx = await getRequestContext();
-
-  const order = await loadOrderByReference(reference);
-  if (order.paymentStatus === "PAID") {
-    throw new AppError("CONFLICT", "This order is already paid.");
-  }
-  if (order.status !== "AWAITING_PAYMENT") {
-    throw new ValidationError("This order is not awaiting payment.");
-  }
-
-  const cf = await resolveCashfreePartner(order);
-  if (!cf) {
-    throw new AppError(
-      "CONFLICT",
-      "Automatic payment is not set up for this order yet.",
-    );
-  }
-
-  // Reuse an INITIATED Cashfree session if one already exists for this order
-  // instead of minting a new Cashfree order every time the pay page reloads.
-  const existing = await db.payment.findFirst({
-    where: { orderId: order.id, provider: "CASHFREE", status: "INITIATED" },
-  });
-  const rawPayload = existing?.rawPayload as
-    | { paymentSessionId?: string }
-    | null
-    | undefined;
-  if (rawPayload?.paymentSessionId) {
-    return { paymentSessionId: rawPayload.paymentSessionId };
-  }
-
-  const appUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
-  const result = await createCashfreeOrder(cf.creds, {
-    orderId: order.reference,
-    orderAmountPaise: order.totalPaise,
-    customerPhone: order.customerPhone,
-    customerName: order.customerName,
-    returnUrl: `${appUrl}/checkout/pay/${order.reference}`,
-    notifyUrl: `${appUrl}/api/payments/webhook/cashfree`,
-  });
-
-  if (existing) {
-    await db.payment.update({
-      where: { id: existing.id },
-      data: { rawPayload: { cfOrderId: result.cfOrderId, paymentSessionId: result.paymentSessionId } },
-    });
-  } else {
-    await db.payment.create({
-      data: {
-        orderId: order.id,
-        channel: "UPI",
-        provider: "CASHFREE",
-        status: "INITIATED",
-        amountPaise: order.totalPaise,
-        payeeVpa: null,
-        payeeName: cf.partnerCode,
-        assignedPartnerId: order.assignedPartnerId,
-        rawPayload: {
-          cfOrderId: result.cfOrderId,
-          paymentSessionId: result.paymentSessionId,
-        },
-      },
-    });
-  }
-
-  await recordAudit(
-    { kind: "system" },
-    {
-      action: "payment.cashfree_session_created",
-      summary: `Cashfree checkout session created for order ${order.reference}`,
-      entityType: "Order",
-      entityId: order.id,
-      details: { reference: order.reference, partnerCode: cf.partnerCode },
-    },
-    ctx,
-  );
-
-  return { paymentSessionId: result.paymentSessionId };
-}
-
-/**
- * Handle an incoming Cashfree webhook. Verifies the signature with the
- * correct partner's secret BEFORE trusting anything in the body (the
- * `order_id` is read out unverified only to know which secret to check
- * against — see {@link peekWebhookOrderId}). Always resolves (never throws
- * for an ordinary "nothing to do here" case) so the caller can ack Cashfree
- * with 200 and avoid needless retries; throws only for a bad signature.
- */
-export async function handleCashfreeWebhook(
-  rawBody: string,
-  signature: string | null,
-  timestamp: string | null,
-): Promise<{ handled: boolean }> {
-  if (!signature || !timestamp) {
-    throw new ValidationError("Missing webhook signature.");
-  }
-
-  const orderId = peekWebhookOrderId(rawBody);
-  if (!orderId) return { handled: false };
-
-  const order = await db.order.findUnique({
-    where: { reference: orderId },
-    include: { items: true },
-  });
-  if (!order || !order.assignedPartnerId) return { handled: false };
-
-  const partnerAccount = await getPublicPaymentAccountForPartner(
-    order.assignedPartnerId,
-  );
-  if (!partnerAccount || partnerAccount.pspProvider !== "CASHFREE") {
-    return { handled: false };
-  }
-  const creds = getCashfreeCredentials(partnerAccount.partnerCode);
-  if (!creds) return { handled: false };
-
-  const valid = verifyCashfreeWebhookSignature({
-    rawBody,
-    timestamp,
-    signature,
-    secretKey: creds.secretKey,
-  });
-  if (!valid) {
-    logger.warn("cashfree.webhook_bad_signature", { orderId });
-    throw new AppError("FORBIDDEN", "Invalid webhook signature.");
-  }
-
-  // Only now, with a verified signature, parse and trust the payload.
-  let payload;
-  try {
-    payload = cashfreeWebhookSchema.parse(JSON.parse(rawBody));
-  } catch (err) {
-    logger.error("cashfree.webhook_unparsable", {
-      orderId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return { handled: false };
-  }
-
-  const paymentStatus = payload.data.payment?.payment_status;
-  if (paymentStatus !== "SUCCESS") {
-    // PENDING / USER_DROPPED / FAILED / anything else — no action. A genuine
-    // failure is left for the customer to retry or a partner to inspect; we
-    // never move an order to PAYMENT_FAILED off an unconfirmed webhook alone.
-    return { handled: true };
-  }
-
-  const amountPaise = Math.round(payload.data.order.order_amount * 100);
-  if (amountPaise !== order.totalPaise) {
-    logger.error("cashfree.webhook_amount_mismatch", {
-      orderId,
-      webhookAmountPaise: amountPaise,
-      orderTotalPaise: order.totalPaise,
-    });
-    return { handled: false };
-  }
-
-  const payment = await db.payment.findFirst({
-    where: { orderId: order.id, provider: "CASHFREE" },
-    orderBy: { createdAt: "desc" },
-  });
-  if (!payment) return { handled: false };
-  if (payment.amountPaise !== order.totalPaise) return { handled: false };
-
-  const partnerUser = await db.user.findUnique({
-    where: { id: order.assignedPartnerId },
-    include: { role: true },
-  });
-  if (!partnerUser) return { handled: false };
-
-  const ctx = await getRequestContext();
-  const items: OrderItemLite[] = order.items.map((i) => ({
-    productId: i.productId,
-    quantity: i.quantity,
-  }));
-
-  const { applied } = await applyVerifiedPayment({
-    payment: {
-      id: payment.id,
-      amountPaise: payment.amountPaise,
-      upiReference: payment.upiReference,
-    },
-    order: { id: order.id, reference: order.reference, status: order.status },
-    items,
-    actor: { kind: "system" },
-    verifiedById: null,
-    billActor: {
-      id: partnerUser.id,
-      code: partnerUser.code,
-      role: partnerUser.role.key,
-    },
-    verificationMethod: "WEBHOOK",
-    utr:
-      payload.data.payment?.bank_reference ??
-      payload.data.payment?.cf_payment_id ??
-      null,
-    ctx,
-  });
-
-  return { handled: applied };
-}
-
-/**
- * Reconciliation sweep (cron): poll Cashfree for anything still INITIATED
- * a few minutes after checkout, in case a webhook was dropped. Never marks a
- * payment failed on our own initiative — only ever advances a genuinely
- * successful payment that the webhook missed.
- */
-export async function reconcileCashfreePayments(): Promise<{
-  checked: number;
-  verified: number;
-}> {
-  const cutoff = new Date(Date.now() - 3 * 60_000);
-  const stuck = await db.payment.findMany({
-    where: {
-      provider: "CASHFREE",
-      status: "INITIATED",
-      createdAt: { lt: cutoff },
-    },
-    include: { order: { include: { items: true } } },
-    take: 100,
-  });
-
-  let verified = 0;
-  for (const payment of stuck) {
-    const order = payment.order;
-    if (!order.assignedPartnerId) continue;
-    const partnerAccount = await getPublicPaymentAccountForPartner(
-      order.assignedPartnerId,
-    );
-    if (!partnerAccount || partnerAccount.pspProvider !== "CASHFREE") continue;
-
-    const verifier = getVerifier("CASHFREE", partnerAccount.partnerCode);
-    if (!verifier.lookup) continue;
-    const outcome = await verifier.lookup({
-      orderId: order.reference,
-      amountPaise: order.totalPaise,
-    });
-    if (outcome.status !== "verified") continue;
-
-    const partnerUser = await db.user.findUnique({
-      where: { id: order.assignedPartnerId },
-      include: { role: true },
-    });
-    if (!partnerUser) continue;
-
-    const ctx = await getRequestContext();
-    const items: OrderItemLite[] = order.items.map((i) => ({
-      productId: i.productId,
-      quantity: i.quantity,
-    }));
-    const { applied } = await applyVerifiedPayment({
-      payment: {
-        id: payment.id,
-        amountPaise: payment.amountPaise,
-        upiReference: payment.upiReference,
-      },
-      order: {
-        id: order.id,
-        reference: order.reference,
-        status: order.status,
-      },
-      items,
-      actor: { kind: "system" },
-      verifiedById: null,
-      billActor: {
-        id: partnerUser.id,
-        code: partnerUser.code,
-        role: partnerUser.role.key,
-      },
-      verificationMethod: "PSP_API",
-      utr: outcome.utr,
-      ctx,
-    });
-    if (applied) verified += 1;
-  }
-
-  return { checked: stuck.length, verified };
-}
-
-// ---------------------------------------------------------------------------
 // Console reads
 // ---------------------------------------------------------------------------
 
@@ -1020,6 +730,23 @@ export async function getPaymentForConsole(raw: unknown) {
   } catch {
     throw new NotFoundError("That payment does not exist.");
   }
+}
+
+/** The bytes of a customer-uploaded payment screenshot, for the console to
+ *  display while a partner is verifying a payment. `null` when this payment
+ *  has none. */
+export async function getPaymentScreenshotBytes(
+  raw: unknown,
+): Promise<{ data: Uint8Array; contentType: string } | null> {
+  await requirePermission("payments.view");
+  const { id } = paymentIdSchema.parse(raw);
+  const payment = await db.payment.findUnique({
+    where: { id },
+    select: { screenshotStorageKey: true },
+  });
+  if (!payment?.screenshotStorageKey) return null;
+  const obj = await getStorage().get(payment.screenshotStorageKey);
+  return obj ? { data: obj.data, contentType: obj.contentType } : null;
 }
 
 // ---------------------------------------------------------------------------

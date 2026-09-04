@@ -91,10 +91,9 @@ export type Dictionary = {
     noAccount: string;
     viewOrder: string;
     error: string;
-    /** Phase 10 — Cashfree automatic-verification checkout. */
-    payNow: string;
-    payNowStarting: string;
-    autoVerifyNote: string;
+    screenshotOptional: string;
+    screenshotHelp: string;
+    screenshotReceived: string;
   };
   confirmation: {
     title: string;
@@ -287,9 +286,10 @@ const en: Dictionary = {
       "Online payment details are not available for this order. We will contact you on your mobile number to arrange payment.",
     viewOrder: "View order details",
     error: "We could not record your payment. Please try again.",
-    payNow: "Pay now",
-    payNowStarting: "Starting…",
-    autoVerifyNote: "Pay securely — your payment is verified automatically.",
+    screenshotOptional: "Payment screenshot (optional)",
+    screenshotHelp:
+      "A screenshot of the successful payment helps us verify it faster — not required.",
+    screenshotReceived: "We also received your payment screenshot.",
   },
   confirmation: {
     title: "Order received",
@@ -492,10 +492,10 @@ const ta: Dictionary = {
       "இந்த ஆர்டருக்கு ஆன்லைன் பணம் செலுத்தும் விவரங்கள் கிடைக்கவில்லை. பணம் செலுத்த ஏற்பாடு செய்ய உங்கள் கைபேசி எண்ணில் தொடர்பு கொள்வோம்.",
     viewOrder: "ஆர்டர் விவரங்களைப் பார்",
     error: "உங்கள் பணத்தைப் பதிவு செய்ய முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
-    payNow: "இப்போது செலுத்து",
-    payNowStarting: "தொடங்குகிறது…",
-    autoVerifyNote:
-      "பாதுகாப்பாக செலுத்துங்கள் — உங்கள் பணம் தானாகவே சரிபார்க்கப்படும்.",
+    screenshotOptional: "பணம் செலுத்திய ஸ்கிரீன்ஷாட் (விருப்பம்)",
+    screenshotHelp:
+      "வெற்றிகரமான பணம் செலுத்தலின் ஸ்கிரீன்ஷாட் விரைவாக சரிபார்க்க உதவும் — கட்டாயம் இல்லை.",
+    screenshotReceived: "உங்கள் பணம் செலுத்திய ஸ்கிரீன்ஷாட்டும் எங்களுக்குக் கிடைத்தது.",
   },
   confirmation: {
     title: "ஆர்டர் பெறப்பட்டது",

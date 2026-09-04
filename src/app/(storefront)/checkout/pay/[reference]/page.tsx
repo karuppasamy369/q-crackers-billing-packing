@@ -7,9 +7,7 @@ import { getPaymentPageContext } from "@/server/services/payments-service";
 import { renderQrDataUri } from "@/server/payments/qr";
 import { isAppError } from "@/server/http/errors";
 import { formatPaise } from "@/lib/money";
-import { env } from "@/env";
 import { PayForm } from "./pay-form";
-import { CashfreeCheckout } from "./cashfree-checkout";
 
 export const dynamic = "force-dynamic";
 
@@ -98,6 +96,11 @@ export default async function PayPage({
               {tp.utrLabel}: {ctx.payment.upiReference}
             </p>
           ) : null}
+          {ctx.payment?.hasScreenshot ? (
+            <p className="mt-1 text-xs text-amber-800">
+              {tp.screenshotReceived}
+            </p>
+          ) : null}
           <Link
             href={`/checkout/confirmation/${ctx.reference}`}
             className="mt-3 inline-block text-sm underline"
@@ -105,12 +108,6 @@ export default async function PayPage({
             {tp.viewOrder}
           </Link>
         </div>
-      ) : ctx.partner?.pspProvider === "CASHFREE" ? (
-        <CashfreeCheckout
-          reference={ctx.reference}
-          mode={env.CASHFREE_ENV === "PRODUCTION" ? "production" : "sandbox"}
-          t={tp}
-        />
       ) : !ctx.partner || (!ctx.partner.upiVpa && !ctx.partner.hasStaticQr) ? (
         <div className="rounded-xl border border-gray-200 bg-gray-50 p-5 text-sm text-gray-600">
           {tp.noAccount}

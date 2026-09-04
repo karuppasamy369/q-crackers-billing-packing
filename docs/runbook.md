@@ -31,11 +31,8 @@ hook so migrations apply before the new version serves traffic.
    with header `Authorization: Bearer <CRON_SECRET>`:
    - `/api/cron/release-holds` — every ~15 min (expired stock holds).
    - `/api/cron/notifications` — every ~2–5 min (WhatsApp delivery + retries).
-   - `/api/cron/reconcile-cashfree` — every ~2–5 min (catches a Cashfree
-     payment whose webhook was missed; a no-op for partners not using
-     Cashfree). See "Cashfree automatic payment verification" below.
-     All three are idempotent and safe to over-call. Until `CRON_SECRET` is
-     set they return 503 and nothing is delivered.
+     Both are idempotent and safe to over-call. Until `CRON_SECRET` is set they
+     return 503 and nothing is delivered.
 
 ## WhatsApp notifications
 
@@ -68,54 +65,6 @@ sent, to the number the customer gave at checkout. There is no bulk / marketing
 path. Keep the registered templates strictly transactional to stay within
 WhatsApp's rules.
 
-## Cashfree automatic payment verification (Phase 10)
-
-Optional, per partner. A partner who hasn't done this keeps the existing
-static-QR / manual-verify flow — nothing breaks if you skip this.
-
-**Onboard one partner (sandbox first, always):**
-
-1. The partner creates their own Cashfree account at
-   [cashfree.com](https://www.cashfree.com) and completes KYC (their own PAN,
-   bank account). Their money settles to their own account, same as today.
-2. In the Cashfree dashboard, switch to **Sandbox** (test mode, top-right
-   toggle) and open Developers → API Keys. Copy the **App ID** and
-   **Secret Key**.
-3. Set two env vars in the hosting platform (Vercel), named by the partner's
-   login code, e.g. for `PK`:
-   `CASHFREE_APP_ID_PK=<app id>`
-   `CASHFREE_SECRET_KEY_PK=<secret key>`
-   Redeploy — these are server-only and are never sent to the browser.
-4. In the Cashfree dashboard, Developers → Webhooks, add
-   `https://<your domain>/api/payments/webhook/cashfree` for the
-   `PAYMENT_SUCCESS_WEBHOOK` event (sandbox webhooks are configured
-   separately from production ones — set this up in Sandbox mode first).
-5. The partner opens **Payment account** in the console, sets "Automatic
-   verification" to Cashfree, and saves.
-6. Place a real test order through that partner's link (`/s/<code>`) and pay
-   with a Cashfree sandbox test UPI id. Confirm the order reaches PAID
-   automatically (no one clicks Verify) and a bill is issued.
-7. **Before going live**, open the sandbox webhook's delivery log in the
-   Cashfree dashboard and compare one real payload against
-   `cashfreeWebhookSchema` in `src/server/integrations/payment/cashfree.ts` —
-   the field names there are our best reading of Cashfree's public docs, not
-   a live-verified payload, and should be confirmed once before real money is
-   involved.
-8. To go live: repeat steps 2–4 in **Production** mode (new App ID/Secret,
-   new webhook URL registration), set `CASHFREE_ENV=PRODUCTION`, and update
-   the same env vars with the production keys.
-
-**If Cashfree is down, or a payment gets stuck** — the reconciliation sweep
-(`/api/cron/reconcile-cashfree`, same `Bearer CRON_SECRET` pattern as the
-other cron routes, call every 2–5 min) polls Cashfree directly for anything
-stuck a few minutes; failing that, `payments.confirm_manual` on the Payments
-screen always works as a fallback, for any partner, PSP or not.
-
-**Turn Cashfree off for a partner** — Payment account → set "Automatic
-verification" back to "Not set up" and save. Checkout falls back to their
-static QR / manual verify immediately; no data is lost, no orders are
-affected.
-
 ## Backups (to be enabled with the Supabase project)
 
 - Supabase automated daily backups + Point-in-Time Recovery (paid tier).
@@ -141,6 +90,13 @@ revoke. Or reset the password to revoke all sessions at once.
 
 **Investigate an action** — Audit log, filter by `actorCode` or `action`.
 Entries cannot be edited or deleted (DB-enforced).
+
+**Verify a customer payment** — Payments (`payments.view`). Open the payment,
+check the UTR against your own bank/UPI app, and view the attached screenshot
+if the customer uploaded one (optional — the UTR is the only mandatory piece
+of evidence). "Verify" (`payments.confirm_manual`, partners only) marks the
+order PAID and issues the bill; "Reject" releases the stock hold and requires
+a reason. Both are audit-logged.
 
 **Customer tracking link** — Order detail → Customer tracking. "Generate link"
 shows the `/track/<token>` URL once (copy and send it); "Regenerate" replaces it

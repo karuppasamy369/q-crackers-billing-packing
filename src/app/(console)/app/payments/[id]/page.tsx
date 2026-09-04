@@ -112,6 +112,28 @@ export default async function PaymentDetailPage({
         </Card>
 
         <div className="space-y-6">
+          {payment.screenshotStorageKey ? (
+            <Card>
+              <h2 className="mb-2 text-sm font-semibold">Payment screenshot</h2>
+              <a
+                href={`/api/payments/screenshot/${payment.id}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/api/payments/screenshot/${payment.id}`}
+                  alt="Payment screenshot the customer uploaded"
+                  className="mx-auto max-h-64 w-full rounded-md border border-gray-200 object-contain"
+                />
+              </a>
+              <p className="mt-2 text-center text-xs text-gray-500">
+                Optional extra evidence from the customer — the UTR above is
+                what matters most; check it against your own bank/UPI app.
+              </p>
+            </Card>
+          ) : null}
+
           {amountMismatch ? (
             <Card className="border-red-200 bg-red-50">
               <h2 className="text-sm font-semibold text-red-800">

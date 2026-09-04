@@ -38,4 +38,4 @@ developer's machine at apply time.
 | `20260904200000_phase8_notifications` | notification_outbox + enums; `tracking_tokens.linkVersion`; `orders.locale`; CHECKs on attempt counters, E.164 recipient, SENT-has-timestamp |
 | `20260904220000_phase9_reviews` | reviews table + `ReviewStatus` enum; CHECKs on rating (1–5), comment length, moderation consistency |
 | `20260904240000_ready_to_book_index` | `orders(status, paymentStatus)` compound index — backs the Ready to Book query. Additive, non-destructive; no new tables or columns. |
-| `20260904260000_phase10_cashfree_accounts` | `partner_payment_accounts.pspProvider` / `pspAccountId` — which automatic-verification PSP (if any) a partner has onboarded with. Additive, nullable; no secret material (API keys live in env vars, not the database). |
+| `20260904280000_payment_screenshot` | `payments.screenshotStorageKey` — an optional customer-uploaded payment screenshot alongside the (still mandatory) UTR. Additive, nullable. |

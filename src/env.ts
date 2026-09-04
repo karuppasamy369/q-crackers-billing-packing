@@ -71,15 +71,6 @@ const runtimeSchema = z.object({
   WHATSAPP_API_VERSION: z.string().min(2).default("v21.0"),
   // Delivery attempts before a message is marked permanently failed (DEAD).
   WHATSAPP_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(5),
-
-  // --- Cashfree automatic UPI verification (Phase 10) --------------------
-  // Applies to every partner who has onboarded (PartnerPaymentAccount.
-  // pspProvider = "CASHFREE"). A partner's own App ID / Secret Key are NOT
-  // here — they live in CASHFREE_APP_ID_<CODE> / CASHFREE_SECRET_KEY_<CODE>,
-  // read lazily per partner (see cashfree.ts) since the set of partner codes
-  // is data, not something this static schema can enumerate. SERVER ONLY.
-  CASHFREE_ENV: z.enum(["SANDBOX", "PRODUCTION"]).default("SANDBOX"),
-  CASHFREE_API_VERSION: z.string().min(1).default("2023-08-01"),
 });
 
 type Env = z.infer<typeof runtimeSchema>;

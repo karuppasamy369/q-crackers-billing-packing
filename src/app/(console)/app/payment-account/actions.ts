@@ -22,8 +22,6 @@ export async function updatePaymentAccountAction(
       payeeName: fd.get("payeeName") || "",
       instructions: fd.get("instructions") || "",
       isActive: fd.get("isActive") ?? "",
-      pspProvider: fd.get("pspProvider") || "",
-      pspAccountId: fd.get("pspAccountId") || "",
     });
     revalidatePath("/app/payment-account");
     return actionOk(undefined, "Payment details saved.");

@@ -1,13 +1,16 @@
 /**
  * Payment verification abstraction (no Razorpay).
  *
- * Phase 5 shipped `manualVerifier` only: an authorised partner checks their
- * bank / UPI app and confirms. Phase 10 adds a real PSP (Cashfree) behind the
- * same interface — a verified payment always ends up as
- * `PaymentStatus.VERIFIED` with a `verificationMethod`, and no other code path
- * needed to change.
+ * Today the only verifier is `manualVerifier`: an authorised partner checks
+ * their bank / UPI app (and, optionally, an uploaded payment screenshot) and
+ * confirms. This interface exists so a future PSP/bank integration can slot
+ * in behind it later with no change to `payments-service.ts` — a verified
+ * payment always ends up as `PaymentStatus.VERIFIED` with a
+ * `verificationMethod`. A Cashfree integration was evaluated and reverted
+ * (see `docs/decisions.md` #22); nothing PSP-specific remains, only this
+ * empty extension point.
  *
- * Rules any implementation MUST follow:
+ * Rules any future implementation MUST follow:
  *   - never trust a client claim ("I paid") — confirmation comes from the bank
  *     / PSP / a human with access to the account
  *   - assert the payment is for the right order and the amount matches
@@ -35,66 +38,22 @@ export interface PaymentVerifier {
   }): Promise<VerificationOutcome>;
 }
 
-/** The only verifier in Phase 5 / the hybrid fallback in Phase 10. A human
- *  does the checking. */
+/** The only verifier today. A human does the checking. */
 export const manualVerifier: PaymentVerifier = {
   name: "MANUAL",
 };
 
-function cashfreeVerifierFor(partnerCode: string): PaymentVerifier {
-  return {
-    name: "CASHFREE",
-    async lookup({ orderId, amountPaise }) {
-      // Imported lazily to keep this file free of node-only crypto imports
-      // when only the manual verifier is used.
-      const { getCashfreeCredentials, getCashfreeOrderPayments } =
-        await import("./cashfree");
-      const creds = getCashfreeCredentials(partnerCode);
-      if (!creds) return { status: "pending" };
-
-      let payments;
-      try {
-        payments = await getCashfreeOrderPayments(creds, orderId);
-      } catch {
-        // Network / provider hiccup — never conclusive.
-        return { status: "pending" };
-      }
-
-      const success = payments.find((p) => p.status === "SUCCESS");
-      if (success) {
-        if (success.amountPaise !== amountPaise) {
-          return {
-            status: "mismatch",
-            reason: `Cashfree reports ${success.amountPaise} paise, order expects ${amountPaise}.`,
-            raw: success,
-          };
-        }
-        return {
-          status: "verified",
-          utr: success.bankReference ?? success.cfPaymentId,
-          amountPaise: success.amountPaise,
-          raw: success,
-        };
-      }
-      if (payments.some((p) => p.status === "PENDING")) {
-        return { status: "pending" };
-      }
-      return { status: "not_found" };
-    },
-  };
-}
-
 /**
- * Registry hook. `partnerCode` is required for provider-specific verifiers
- * (each partner holds their own PSP credentials); it's ignored for MANUAL.
+ * Registry hook. `partnerCode` is accepted (and currently unused) so a future
+ * provider that needs per-partner credentials can be added here without
+ * changing any call site.
  */
 export function getVerifier(
   provider: string,
   partnerCode?: string | null,
 ): PaymentVerifier {
-  if (provider === "CASHFREE" && partnerCode) {
-    return cashfreeVerifierFor(partnerCode);
-  }
-  // MANUAL, and any unknown provider, falls back to a human verifying.
+  void provider;
+  void partnerCode;
+  // Every provider falls back to a human verifying — no PSP is wired up.
   return manualVerifier;
 }
