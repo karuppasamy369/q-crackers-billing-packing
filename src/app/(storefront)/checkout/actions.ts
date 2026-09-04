@@ -5,6 +5,8 @@ import { cookies } from "next/headers";
 import { quoteCart, type CartQuote } from "@/server/services/pricing-service";
 import { createOnlineOrder } from "@/server/services/orders-service";
 import { submitPayment } from "@/server/services/payments-service";
+import { rotateTrackingTokenByReference } from "@/server/services/tracking-service";
+import { env } from "@/env";
 import { isAppError } from "@/server/http/errors";
 import type { CartItemInput } from "@/lib/validation/checkout";
 import { PARTNER_COOKIE } from "@/lib/storefront/partner-cookie";
@@ -73,6 +75,34 @@ export async function createOrderAction(
       error: isAppError(err)
         ? err.publicMessage
         : "We could not place your order. Please try again.",
+    };
+  }
+}
+
+export type TrackingLinkActionState =
+  | { ok: true; url: string }
+  | { ok: false; error: string }
+  | null;
+
+/**
+ * Reveal (by rotating) the shareable tracking link for the customer's own
+ * order. Authorised by the order reference the customer already holds.
+ */
+export async function revealTrackingLinkAction(
+  _prev: TrackingLinkActionState,
+  formData: FormData,
+): Promise<TrackingLinkActionState> {
+  try {
+    const reference = String(formData.get("reference") ?? "");
+    const { token } = await rotateTrackingTokenByReference(reference);
+    const base = env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
+    return { ok: true, url: `${base}/track/${token}` };
+  } catch (err) {
+    return {
+      ok: false,
+      error: isAppError(err)
+        ? err.publicMessage
+        : "We could not generate a tracking link. Please try again.",
     };
   }
 }

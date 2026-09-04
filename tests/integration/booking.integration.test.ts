@@ -1,6 +1,6 @@
 /**
  * Phase 6 integration tests — booking panel: packing, courier / LR entry,
- * PARCEL_BOOKED transition, LR PDF upload, customer tracking, and RBAC.
+ * PARCEL_BOOKED transition, LR PDF upload, and RBAC.
  * Skipped unless TEST_DATABASE_URL is set (CI provides Postgres).
  */
 import { describe, it, expect, beforeEach } from "vitest";
@@ -26,8 +26,6 @@ import {
   updateBookingDetails,
   uploadLrDocument,
   getLrDocumentBytes,
-  getPublicTrackingStatus,
-  getPublicLrCopy,
 } from "@/server/services/booking-service";
 
 const d = TEST_DB ? describe : describe.skip;
@@ -387,60 +385,8 @@ d("Phase 6 — booking", () => {
     });
   });
 
-  describe("customer tracking", () => {
-    it("reflects the live status as the order moves through booking", async () => {
-      const { order } = await makePaidOrder();
-
-      let view = await getPublicTrackingStatus(order.reference);
-      expect(view.status).toBe("PAID");
-      expect(view.hasLrCopy).toBe(false);
-      expect(view.courierName).toBeNull();
-
-      await loginAs(prisma, "PK");
-      await markOrderPacked({ orderId: order.id });
-      logout();
-      view = await getPublicTrackingStatus(order.reference);
-      expect(view.status).toBe("PACKED");
-      expect(view.packedAt).not.toBeNull();
-
-      await loginAs(prisma, "PK");
-      await confirmParcelBooked(goodParcel(order.id));
-      await uploadLrDocument({ orderId: order.id }, PDF, "lr.pdf");
-      logout();
-
-      view = await getPublicTrackingStatus(order.reference);
-      expect(view.status).toBe("PARCEL_BOOKED");
-      expect(view.courierName).toBe("Professional Couriers");
-      expect(view.lrNumber).toBe("TN-2026/0042");
-      expect(view.parcelCount).toBe(2);
-      expect(view.hasLrCopy).toBe(true);
-    });
-
-    it("‘Download LR Copy’ is unavailable until the PDF is uploaded", async () => {
-      const { order } = await makePaidOrder();
-      await loginAs(prisma, "PK");
-      await markOrderPacked({ orderId: order.id });
-      await confirmParcelBooked(goodParcel(order.id));
-      logout();
-
-      await expect(getPublicLrCopy(order.reference)).rejects.toMatchObject({
-        code: "NOT_FOUND",
-      });
-
-      await loginAs(prisma, "PK");
-      await uploadLrDocument({ orderId: order.id }, PDF, "lr.pdf");
-      logout();
-
-      const { data } = await getPublicLrCopy(order.reference);
-      expect(data.length).toBe(PDF.length);
-    });
-
-    it("an unknown reference is a NOT_FOUND", async () => {
-      await expect(
-        getPublicTrackingStatus("x".repeat(48)),
-      ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    });
-  });
+  // The public customer tracking view + LR copy are covered end-to-end in
+  // tests/integration/tracking.integration.test.ts (Phase 7).
 
   describe("RBAC (server-side)", () => {
     it("staff denied booking.view cannot list or open the panel", async () => {

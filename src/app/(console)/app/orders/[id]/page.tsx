@@ -2,9 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAuth, hasPermission } from "@/server/rbac/authorize";
 import { getOrderForConsole } from "@/server/services/orders-service";
+import { getTrackingAdminInfo } from "@/server/services/tracking-service";
 import { isAppError } from "@/server/http/errors";
 import { PageHeader, Card, Forbidden } from "@/components/console/ui";
 import { formatPaise, formatGstRateBp } from "@/lib/money";
+import { TrackingPanel } from "./tracking-panel";
 
 const PAYMENT_BADGE: Record<string, string> = {
   SUBMITTED: "bg-amber-100 text-amber-800",
@@ -32,6 +34,7 @@ export default async function OrderDetailPage({
     if (isAppError(err) && err.code === "NOT_FOUND") notFound();
     throw err;
   }
+  const trackingInfo = await getTrackingAdminInfo(order.id);
 
   return (
     <div className="space-y-6">
@@ -211,6 +214,17 @@ export default async function OrderDetailPage({
                   Open booking panel
                 </Link>
               ) : null}
+            </Card>
+          ) : null}
+
+          {trackingInfo.eligible || trackingInfo.status !== "none" ? (
+            <Card>
+              <h2 className="mb-2 text-sm font-semibold">Customer tracking</h2>
+              <TrackingPanel
+                orderId={order.id}
+                info={trackingInfo}
+                canManage={hasPermission(auth, "tracking.manage")}
+              />
             </Card>
           ) : null}
 

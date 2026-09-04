@@ -4,10 +4,18 @@ import Link from "next/link";
 
 import { getStorefrontContext } from "@/server/storefront/context";
 import { getOrderByReference } from "@/server/services/orders-service";
+import {
+  getPublicTrackingByReference,
+  ensureTrackingTokenByReference,
+} from "@/server/services/tracking-service";
 import { isAppError } from "@/server/http/errors";
 import { formatPaise } from "@/lib/money";
+import { env } from "@/env";
+import { OrderTracking } from "@/components/storefront/order-tracking";
+import { TrackingShareCard } from "./tracking-share-card";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export const metadata: Metadata = {
   title: "Order received",
@@ -40,6 +48,18 @@ export default async function ConfirmationPage({
           : t.confirmation.paymentPending;
   const paid = order.paymentStatus === "PAID";
 
+  // Once payment is verified, provision the tracking token (idempotent) and
+  // load the customer-safe tracking view.
+  const [tracking, ensured] = paid
+    ? await Promise.all([
+        getPublicTrackingByReference(reference),
+        ensureTrackingTokenByReference(reference),
+      ])
+    : [null, { created: false, token: null as string | null }];
+  const shareUrl = ensured.token
+    ? `${env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/track/${ensured.token}`
+    : null;
+
   return (
     <div className="mx-auto max-w-lg space-y-6">
       <div
@@ -68,18 +88,30 @@ export default async function ConfirmationPage({
           >
             {t.payment.title}
           </Link>
-        ) : (
-          <Link
-            href={`/track/${order.reference}`}
-            className="mt-2 inline-block text-sm underline"
-          >
-            {t.confirmation.trackOrder}
-          </Link>
-        )}
+        ) : null}
         <p className="mt-2 text-xs text-gray-600">
           {t.confirmation.contactNote}
         </p>
       </div>
+
+      {tracking ? (
+        <>
+          <div className="rounded-xl border border-gray-200 p-5">
+            <OrderTracking
+              dto={tracking}
+              t={t}
+              lrHref={`/checkout/confirmation/${encodeURIComponent(
+                order.reference,
+              )}/lr-copy`}
+            />
+          </div>
+          <TrackingShareCard
+            reference={order.reference}
+            initialUrl={shareUrl}
+            t={t}
+          />
+        </>
+      ) : null}
 
       <div className="rounded-xl border border-gray-200 p-5">
         <h2 className="mb-2 text-sm font-semibold">{t.confirmation.items}</h2>

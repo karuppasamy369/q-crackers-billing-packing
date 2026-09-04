@@ -8,13 +8,11 @@ import { recordAudit } from "@/server/services/audit";
 import { getRequestContext } from "@/server/http/request-context";
 import { auditActor } from "@/server/services/_helpers";
 import { AppError, NotFoundError, ValidationError } from "@/server/http/errors";
-import { rateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import type { z } from "zod";
 import { env } from "@/env";
 import { getStorage } from "@/server/integrations/storage";
 import { validatePdfUpload } from "@/lib/pdf-validation";
-import { orderReferenceSchema } from "@/lib/validation/checkout";
 import {
   bookingOrderIdSchema,
   bookParcelSchema,
@@ -22,8 +20,6 @@ import {
 
 const PAGE_SIZE = 25;
 const LR_PREFIX = "lr-docs";
-const LR_DOWNLOAD_RATE_MAX = 20;
-const LR_DOWNLOAD_RATE_WINDOW_MS = 10 * 60_000;
 
 /** Order statuses that belong in the Booking Panel. */
 export const BOOKING_ORDER_STATUSES: OrderStatus[] = [
@@ -480,112 +476,5 @@ export async function getLrDocumentBytes(raw: unknown) {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Customer-facing tracking (capability = knowing the random reference)
-// ---------------------------------------------------------------------------
-
-export type TrackingView = {
-  reference: string;
-  status: OrderStatus;
-  placedAt: Date;
-  paidAt: Date | null;
-  packedAt: Date | null;
-  parcelBookedAt: Date | null;
-  courierName: string | null;
-  lrNumber: string | null;
-  bookingDate: Date | null;
-  parcelCount: number | null;
-  hasLrCopy: boolean;
-  itemCount: number;
-  deliverTo: { city: string; state: string; pincode: string };
-};
-
-export async function getPublicTrackingStatus(
-  rawRef: string,
-): Promise<TrackingView> {
-  const ref = orderReferenceSchema.safeParse(rawRef);
-  if (!ref.success) throw new NotFoundError("Order not found.");
-
-  const order = await db.order.findUnique({
-    where: { reference: ref.data },
-    include: {
-      booking: {
-        include: {
-          lrDocuments: { where: { isCurrent: true }, select: { id: true } },
-        },
-      },
-      history: {
-        where: { toStatus: "PAID" },
-        orderBy: { createdAt: "asc" },
-        take: 1,
-      },
-      _count: { select: { items: true } },
-    },
-  });
-  if (!order) throw new NotFoundError("Order not found.");
-
-  return {
-    reference: order.reference,
-    status: order.status,
-    placedAt: order.placedAt,
-    paidAt: order.history[0]?.createdAt ?? null,
-    packedAt: order.booking?.packedAt ?? null,
-    parcelBookedAt: order.booking?.parcelBookedAt ?? null,
-    courierName: order.booking?.parcelBookedAt
-      ? (order.booking?.courierName ?? null)
-      : null,
-    lrNumber: order.booking?.parcelBookedAt
-      ? (order.booking?.lrNumber ?? null)
-      : null,
-    bookingDate: order.booking?.parcelBookedAt
-      ? (order.booking?.bookingDate ?? null)
-      : null,
-    parcelCount: order.booking?.parcelBookedAt
-      ? (order.booking?.parcelCount ?? null)
-      : null,
-    hasLrCopy: (order.booking?.lrDocuments.length ?? 0) > 0,
-    itemCount: order._count.items,
-    deliverTo: {
-      city: order.city,
-      state: order.stateName,
-      pincode: order.pincode,
-    },
-  };
-}
-
-/**
- * Customer LR download via the tracking link. The 24-byte random reference is
- * the bearer capability (same model as the confirmation / payment pages).
- * Rate-limited by IP.
- */
-export async function getPublicLrCopy(rawRef: string) {
-  const ctx = await getRequestContext();
-  const rl = rateLimit(
-    `lr:copy:${ctx.ip ?? "unknown"}`,
-    LR_DOWNLOAD_RATE_MAX,
-    LR_DOWNLOAD_RATE_WINDOW_MS,
-  );
-  if (!rl.allowed) {
-    throw new AppError(
-      "RATE_LIMITED",
-      "Too many download attempts. Please wait a few minutes.",
-    );
-  }
-
-  const ref = orderReferenceSchema.safeParse(rawRef);
-  if (!ref.success) throw new NotFoundError("Order not found.");
-
-  const order = await db.order.findUnique({
-    where: { reference: ref.data },
-    select: { id: true, reference: true },
-  });
-  if (!order) throw new NotFoundError("Order not found.");
-
-  const current = await currentLrObject(order.id);
-  if (!current) throw new NotFoundError("The LR copy is not available yet.");
-
-  return {
-    data: current.data,
-    filename: `LR-${order.reference.slice(0, 8)}.pdf`,
-  };
-}
+// Customer-facing tracking (the public tracking page, LR copy, and the
+// tracking-token lifecycle) lives in `tracking-service.ts` (Phase 7).

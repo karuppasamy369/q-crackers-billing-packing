@@ -237,6 +237,8 @@ model User {
   bookingsPacked        Booking[]               @relation("BookingPacker")
   bookingsParcelBooked  Booking[]               @relation("BookingParcelBooker")
   lrDocumentsUploaded   LrDocument[]            @relation("LrUploader")
+  trackingTokensIssued  TrackingToken[]         @relation("TrackingTokenIssuer")
+  trackingTokensRevoked TrackingToken[]         @relation("TrackingTokenRevoker")
 
   @@index([roleId])
   @@map("users")
@@ -518,6 +520,7 @@ model Order {
   payments        Payment[]
   bill            Bill?
   booking         Booking?
+  trackingToken   TrackingToken?
 
   @@index([customerId])
   @@index([assignedPartnerId])
@@ -820,4 +823,37 @@ model LrDocument {
   @@index([bookingId])
   @@index([orderId])
   @@map("lr_documents")
+}
+
+// ---------------------------------------------------------------------------
+// Customer tracking tokens (Phase 7)
+// ---------------------------------------------------------------------------
+
+/// A public, revocable tracking credential for one paid order. The raw token
+/// (256 bits of CSPRNG, base64url) is NEVER stored — only its SHA-256 hex hash,
+/// so a database leak does not yield working tracking links. Exactly one row
+/// per order; rotation replaces the hash in place, revocation sets `revokedAt`.
+/// The customer-safe tracking page resolves an order ONLY through this hash.
+model TrackingToken {
+  id        String @id @default(uuid()) @db.Uuid
+  orderId   String @unique @db.Uuid
+  /// SHA-256 hex of the raw token. Unique; the sole public lookup key.
+  tokenHash String @unique
+
+  /// Null = never expires (decision 14: links do not expire in V1).
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  revokedById String?   @db.Uuid
+  /// Bumped on each rotation so operators can see the link changed.
+  rotatedAt   DateTime?
+
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  order     Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  createdBy User? @relation("TrackingTokenIssuer", fields: [createdById], references: [id], onDelete: SetNull)
+  revokedBy User? @relation("TrackingTokenRevoker", fields: [revokedById], references: [id], onDelete: SetNull)
+
+  @@map("tracking_tokens")
 }

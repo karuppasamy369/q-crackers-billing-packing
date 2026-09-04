@@ -45,20 +45,20 @@ in Phase 1, ⏳ = designed, lands in a later phase.
 
 ## Platform & data
 
-| Control                                             | Status | Where                                          |
-| --------------------------------------------------- | ------ | ---------------------------------------------- |
-| Strict security headers (CSP, HSTS, XFO, …)         | ✅     | `next.config.ts` (unit-tested)                 |
-| `x-powered-by` removed                              | ✅     | `next.config.ts`                               |
-| Env validated at startup                            | ✅     | `src/env.ts` (Zod)                             |
-| No secrets in the repo                              | ✅     | `.gitignore`, `.env.example` only              |
-| Input validation at every boundary                  | ✅     | Zod on all actions/services                    |
-| Parameterised queries                               | ✅     | Prisma (no raw string SQL in app code)         |
-| Transaction-capable audit writes                    | ✅     | `recordAudit(..., client)` accepts a tx        |
-| DB constraints (FK/unique/enum/checks)              | ✅     | `prisma/schema.prisma` + init migration        |
-| HTTPS / TLS, backups, PITR                          | ⏳     | platform config — see `runbook.md`             |
-| Protected file access for LR PDFs                   | ⏳     | Phase 8 (private bucket + signed URL endpoint) |
-| Payment verification (signature/amount/idempotency) | ⏳     | Phase 5                                        |
-| Secure tracking tokens                              | ⏳     | Phase 7 (same primitive as `tokens.ts`)        |
+| Control                                             | Status | Where                                                                                                                                                    |
+| --------------------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Strict security headers (CSP, HSTS, XFO, …)         | ✅     | `next.config.ts` (unit-tested)                                                                                                                           |
+| `x-powered-by` removed                              | ✅     | `next.config.ts`                                                                                                                                         |
+| Env validated at startup                            | ✅     | `src/env.ts` (Zod)                                                                                                                                       |
+| No secrets in the repo                              | ✅     | `.gitignore`, `.env.example` only                                                                                                                        |
+| Input validation at every boundary                  | ✅     | Zod on all actions/services                                                                                                                              |
+| Parameterised queries                               | ✅     | Prisma (no raw string SQL in app code)                                                                                                                   |
+| Transaction-capable audit writes                    | ✅     | `recordAudit(..., client)` accepts a tx                                                                                                                  |
+| DB constraints (FK/unique/enum/checks)              | ✅     | `prisma/schema.prisma` + init migration                                                                                                                  |
+| HTTPS / TLS, backups, PITR                          | ⏳     | platform config — see `runbook.md`                                                                                                                       |
+| Protected file access for LR PDFs                   | ✅     | Phase 6/7 — private `lr-docs/` bucket, streamed via `/api/lr/[orderId]/pdf` (`lr.download`) or a rate-limited tracking route; storage keys never exposed |
+| Payment verification (signature/amount/idempotency) | ✅     | Phase 5 — `verifyPayment` asserts order + amount, UTR-once, idempotent                                                                                   |
+| Secure tracking tokens                              | ✅     | Phase 7 — see the Customer tracking table below                                                                                                          |
 
 ## Catalogue & storage (Phase 2)
 
@@ -123,6 +123,31 @@ in Phase 1, ⏳ = designed, lands in a later phase.
 | Bill creation & cancellation audit-logged       | ✅     | `bill.issue` / `bill.cancel` audit entries with number, totals, reason                                                    |
 | Bill PDFs stored privately                      | ✅     | `bills/…` prefix in the private bucket; served only via `/api/billing/[id]/pdf` behind `billing.view`                     |
 | Immutable snapshots on the bill                 | ✅     | seller name/GSTIN/state, buyer details, HSN, rates and amounts are copied onto `bills` / `bill_items` at issue time       |
+
+## Customer tracking (Phase 7)
+
+| Control                                                     | Status | Where                                                                                                                      |
+| ----------------------------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------- |
+| Tracking credential is a 256-bit CSPRNG token (base64url)   | ✅     | `generateRandomToken(32)` (`src/server/auth/tokens.ts`); `/track/<token>`                                                  |
+| Only the SHA-256 hash is stored — raw token never persisted | ✅     | `tracking_tokens.tokenHash` (`@unique`); DB `CHECK` rejects any value that is not 64 hex chars (integration-tested)        |
+| No order id / bill number / phone / timestamp in the URL    | ✅     | token is unrelated to any order field; the page shows an opaque `publicRef` (`QC-` + hash prefix), never the reference     |
+| Lookup is hash-based only                                   | ✅     | `getPublicTrackingByToken` → `findUnique({ tokenHash })`; the raw token is never compared or logged                        |
+| One active token per order; rotation, not duplication       | ✅     | `orderId @unique`; `ensureTrackingTokenForOrder` is idempotent, `regenerate` replaces the hash in place                    |
+| Concurrent token creation is safe                           | ✅     | `orderId` unique index + `P2002` catch → exactly one token (integration-tested)                                            |
+| Revocation + expiry supported                               | ✅     | `revokeTrackingToken` (`tracking.manage`); `expiresAt` honoured on resolve (left null in V1 per decision 14)               |
+| Generic response for invalid / revoked / expired / unpaid   | ✅     | single `NotFoundError("…not valid or has expired")`; identical message for a missing token and an existing unpaid order    |
+| Token enumeration reveals nothing                           | ✅     | 256-bit space + constant generic error + no timing branch on "order exists" (integration-tested)                           |
+| Unpaid / payment-failed orders are never publicly trackable | ✅     | `orderIsTokenEligible` requires `paymentStatus = PAID`; resolve re-checks (integration-tested)                             |
+| Cancelled orders shown safely                               | ✅     | DTO `cancelled` flag, destination + courier suppressed (integration-tested)                                                |
+| Public rate limiting                                        | ✅     | `rateLimit("track:view:<ip>", 60 / 10 min)`, `"track:lr:<ip>", 15 / 10 min`, `"track:rotate:<ip>", 10 / 10 min`            |
+| Security headers on `/track/*`                              | ✅     | `next.config.ts` — `Cache-Control: no-store`, `X-Robots-Tag: noindex`, `Referrer-Policy: no-referrer` (+ global CSP/HSTS)  |
+| Minimal, explicit, typed public DTO                         | ✅     | `PublicTrackingDto` — status, timeline, courier/LR, city+state, item count; no address, phone, name, email, IDs, or money  |
+| LR download validates the doc belongs to the tracked order  | ✅     | `getPublicTrackingLrByToken` resolves the order via the token then loads that order's current LR only (integration-tested) |
+| Status timeline is authoritative, not client-inferred       | ✅     | built server-side from `order_status_history` + `bookings`; no parallel status system                                      |
+| Freshness — no stale booking/LR status                      | ✅     | `dynamic = "force-dynamic"`, `revalidate = 0`, `Cache-Control: no-store`                                                   |
+| Token lifecycle audit-logged                                | ✅     | `tracking.token_issued` / `token_rotated` / `token_revoked` audit entries                                                  |
+| Raw tokens are never logged                                 | ✅     | audit summaries and `logger` calls reference the order, never the token                                                    |
+| No customer login required                                  | ✅     | fully anonymous; the token (or, for the customer's own confirmation page, the order reference) is the only capability      |
 
 ## Known Phase 1 limitations
 

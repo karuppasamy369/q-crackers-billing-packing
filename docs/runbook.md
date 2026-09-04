@@ -19,6 +19,9 @@ hook so migrations apply before the new version serves traffic.
    connection strings.
 2. Set env vars in Vercel: `DATABASE_URL` (pooled), `DIRECT_URL` (direct),
    `NEXT_PUBLIC_APP_URL`, `NODE_ENV`, session/lockout tuning if non-default.
+   `NEXT_PUBLIC_APP_URL` **must** be the real public origin — customer tracking
+   links (`/track/<token>`) are built from it. `STORAGE_MAX_DOCUMENT_BYTES`
+   (default 10 MB) caps LR / tracking PDF uploads. Phase 7 adds no new secrets.
 3. Run `npx prisma migrate deploy`.
 4. Run `npm run db:seed` **once**. Capture the printed temporary passwords and
    distribute them to each partner/staff member over a secure channel.
@@ -49,6 +52,13 @@ revoke. Or reset the password to revoke all sessions at once.
 
 **Investigate an action** — Audit log, filter by `actorCode` or `action`.
 Entries cannot be edited or deleted (DB-enforced).
+
+**Customer tracking link** — Order detail → Customer tracking. "Generate link"
+shows the `/track/<token>` URL once (copy and send it); "Regenerate" replaces it
+(older links stop working); "Revoke" disables tracking for that order. A leaked
+link only ever exposes delivery progress and the LR PDF — no address, contact
+details, or payment data. Requires `tracking.manage` (partners only). Filter the
+audit log by `action` `tracking.token_*` to see the history.
 
 ## Incident: suspected credential compromise
 

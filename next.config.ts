@@ -57,7 +57,20 @@ const nextConfig: NextConfig = {
   // uses Node internals at runtime.
   serverExternalPackages: ["@react-pdf/renderer"],
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      {
+        // Public customer tracking pages: never cache (booking / LR status must
+        // be fresh), never index, and never leak the token via the Referer
+        // header when the visitor follows an outbound link.
+        source: "/track/:path*",
+        headers: [
+          { key: "Cache-Control", value: "no-store, max-age=0" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+        ],
+      },
+    ];
   },
 };
 

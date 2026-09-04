@@ -105,28 +105,45 @@ export type Dictionary = {
     deliverTo: string;
     items: string;
     notFound: string;
-    trackOrder: string;
   };
   tracking: {
     title: string;
-    reference: string;
-    notFound: string;
-    stepPlaced: string;
-    stepPaid: string;
-    stepPacked: string;
-    stepParcelBooked: string;
-    stepPaymentPending: string;
-    stepPaymentFailed: string;
-    awaitingDispatch: string;
-    dispatched: string;
+    refLabel: string;
+    statusPaid: string;
+    statusPacked: string;
+    statusParcelBooked: string;
+    statusCompleted: string;
+    statusCancelled: string;
+    bannerPreparing: string;
+    bannerDispatched: string;
+    bannerCompleted: string;
+    bannerCancelled: string;
+    stagePayment: string;
+    stagePacked: string;
+    stageParcelBooked: string;
+    stageLrAvailable: string;
+    stageReview: string;
+    stateCurrent: string;
+    statePending: string;
     courier: string;
     lrNumber: string;
     bookingDate: string;
     parcelCount: string;
+    destination: string;
+    items: string;
     downloadLr: string;
-    deliverTo: string;
-    itemsCount: string;
+    lrPending: string;
+    reviewPending: string;
+    cancelledNote: string;
+    invalidTitle: string;
+    invalidBody: string;
     contactNote: string;
+    shareTitle: string;
+    shareHint: string;
+    shareReveal: string;
+    shareRefresh: string;
+    shareCopy: string;
+    shareCopied: string;
   };
   footer: {
     contact: string;
@@ -238,29 +255,50 @@ const en: Dictionary = {
     deliverTo: "Deliver to",
     items: "Items",
     notFound: "We could not find that order.",
-    trackOrder: "Track your order",
   },
   tracking: {
     title: "Track your order",
-    reference: "Order reference",
-    notFound: "We could not find that order. Check the link and try again.",
-    stepPlaced: "Order placed",
-    stepPaid: "Payment confirmed",
-    stepPacked: "Packed",
-    stepParcelBooked: "Handed to courier",
-    stepPaymentPending: "Awaiting payment",
-    stepPaymentFailed: "Payment not confirmed",
-    awaitingDispatch: "Your order is being prepared for dispatch.",
-    dispatched: "Your parcel is on its way.",
+    refLabel: "Order",
+    statusPaid: "Payment confirmed",
+    statusPacked: "Packed",
+    statusParcelBooked: "Handed to courier",
+    statusCompleted: "Delivered",
+    statusCancelled: "Cancelled",
+    bannerPreparing: "Your order is being prepared for dispatch.",
+    bannerDispatched: "Your parcel is on its way.",
+    bannerCompleted: "Your order has been delivered.",
+    bannerCancelled: "This order was cancelled.",
+    stagePayment: "Payment received",
+    stagePacked: "Order packed",
+    stageParcelBooked: "Parcel booked",
+    stageLrAvailable: "LR copy available",
+    stageReview: "Review",
+    stateCurrent: "In progress",
+    statePending: "Pending",
     courier: "Courier / transport",
     lrNumber: "LR / parcel number",
     bookingDate: "Booking date",
     parcelCount: "Number of parcels",
+    destination: "Destination",
+    items: "Items",
     downloadLr: "Download LR copy",
-    deliverTo: "Deliver to",
-    itemsCount: "Items",
+    lrPending:
+      "The LR copy will appear here once your parcel has been booked with the courier.",
+    reviewPending: "You can leave a review once your order is delivered.",
+    cancelledNote:
+      "If you have any questions about this cancellation, please contact us.",
+    invalidTitle: "This tracking link is not valid",
+    invalidBody:
+      "The link may be incorrect, expired, or no longer active. Please check the link you were given, or contact us for help.",
     contactNote:
       "For any help with your order, contact us on the number on our website.",
+    shareTitle: "Shareable tracking link",
+    shareHint:
+      "Safe to forward — it shows only delivery progress, not your address or contact details.",
+    shareReveal: "Show tracking link",
+    shareRefresh: "Get a new link",
+    shareCopy: "Copy",
+    shareCopied: "Copied",
   },
   footer: {
     contact: "Contact",
@@ -376,30 +414,51 @@ const ta: Dictionary = {
     deliverTo: "விநியோகம்",
     items: "பொருட்கள்",
     notFound: "அந்த ஆர்டரைக் கண்டுபிடிக்க முடியவில்லை.",
-    trackOrder: "உங்கள் ஆர்டரைக் கண்காணியுங்கள்",
   },
   tracking: {
     title: "உங்கள் ஆர்டரைக் கண்காணியுங்கள்",
-    reference: "ஆர்டர் குறிப்பு எண்",
-    notFound:
-      "அந்த ஆர்டரைக் கண்டுபிடிக்க முடியவில்லை. இணைப்பைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்.",
-    stepPlaced: "ஆர்டர் செய்யப்பட்டது",
-    stepPaid: "பணம் உறுதிப்படுத்தப்பட்டது",
-    stepPacked: "பேக் செய்யப்பட்டது",
-    stepParcelBooked: "கூரியரிடம் ஒப்படைக்கப்பட்டது",
-    stepPaymentPending: "பணம் செலுத்த வேண்டியுள்ளது",
-    stepPaymentFailed: "பணம் உறுதிப்படுத்தப்படவில்லை",
-    awaitingDispatch: "உங்கள் ஆர்டர் அனுப்புவதற்குத் தயாராகிறது.",
-    dispatched: "உங்கள் பார்சல் வழியில் உள்ளது.",
+    refLabel: "ஆர்டர்",
+    statusPaid: "பணம் உறுதிப்படுத்தப்பட்டது",
+    statusPacked: "பேக் செய்யப்பட்டது",
+    statusParcelBooked: "கூரியரிடம் ஒப்படைக்கப்பட்டது",
+    statusCompleted: "வழங்கப்பட்டது",
+    statusCancelled: "ரத்து செய்யப்பட்டது",
+    bannerPreparing: "உங்கள் ஆர்டர் அனுப்புவதற்குத் தயாராகிறது.",
+    bannerDispatched: "உங்கள் பார்சல் வழியில் உள்ளது.",
+    bannerCompleted: "உங்கள் ஆர்டர் வழங்கப்பட்டது.",
+    bannerCancelled: "இந்த ஆர்டர் ரத்து செய்யப்பட்டது.",
+    stagePayment: "பணம் பெறப்பட்டது",
+    stagePacked: "ஆர்டர் பேக் செய்யப்பட்டது",
+    stageParcelBooked: "பார்சல் புக் செய்யப்பட்டது",
+    stageLrAvailable: "LR நகல் கிடைக்கிறது",
+    stageReview: "மதிப்பாய்வு",
+    stateCurrent: "நடைபெறுகிறது",
+    statePending: "நிலுவையில்",
     courier: "கூரியர் / போக்குவரத்து",
     lrNumber: "LR / பார்சல் எண்",
     bookingDate: "புக்கிங் தேதி",
     parcelCount: "பார்சல்களின் எண்ணிக்கை",
+    destination: "சேருமிடம்",
+    items: "பொருட்கள்",
     downloadLr: "LR நகலைப் பதிவிறக்குங்கள்",
-    deliverTo: "விநியோகம்",
-    itemsCount: "பொருட்கள்",
+    lrPending:
+      "உங்கள் பார்சல் கூரியருடன் புக் செய்யப்பட்டதும் LR நகல் இங்கே தோன்றும்.",
+    reviewPending:
+      "உங்கள் ஆர்டர் வழங்கப்பட்ட பிறகு நீங்கள் மதிப்பாய்வு அளிக்கலாம்.",
+    cancelledNote:
+      "இந்த ரத்து குறித்து ஏதேனும் கேள்விகள் இருந்தால், எங்களைத் தொடர்பு கொள்ளுங்கள்.",
+    invalidTitle: "இந்த கண்காணிப்பு இணைப்பு செல்லுபடியாகாது",
+    invalidBody:
+      "இணைப்பு தவறாக இருக்கலாம், காலாவதியாகியிருக்கலாம் அல்லது செயலில் இல்லாமல் இருக்கலாம். உங்களுக்கு வழங்கப்பட்ட இணைப்பைச் சரிபார்க்கவும் அல்லது உதவிக்கு எங்களைத் தொடர்பு கொள்ளவும்.",
     contactNote:
       "உங்கள் ஆர்டர் தொடர்பான உதவிக்கு, எங்கள் இணையதளத்தில் உள்ள எண்ணில் தொடர்பு கொள்ளுங்கள்.",
+    shareTitle: "பகிரக்கூடிய கண்காணிப்பு இணைப்பு",
+    shareHint:
+      "பகிர்வதற்குப் பாதுகாப்பானது — இது டெலிவரி முன்னேற்றத்தை மட்டுமே காட்டுகிறது, உங்கள் முகவரி அல்லது தொடர்பு விவரங்களை அல்ல.",
+    shareReveal: "கண்காணிப்பு இணைப்பைக் காட்டு",
+    shareRefresh: "புதிய இணைப்பைப் பெறு",
+    shareCopy: "நகலெடு",
+    shareCopied: "நகலெடுக்கப்பட்டது",
   },
   footer: {
     contact: "தொடர்பு",

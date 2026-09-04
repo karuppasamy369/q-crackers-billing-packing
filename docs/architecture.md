@@ -135,6 +135,24 @@ indexes enforce one live payment per order and one recorded UTR globally; a
 `ORDER_HOLD_MINUTES` raised to 1440 (manual verification takes longer than a
 gateway redirect).
 
+Phase 7: `tracking_tokens` (one per order). Stores only the SHA-256 hex hash of
+a 256-bit base64url token — the raw token is never persisted, so a database leak
+yields no working tracking links. `tracking-service` owns the whole lifecycle:
+`ensureTrackingTokenForOrder` (idempotent, races resolved by the `orderId`
+unique index), `regenerateTrackingToken` / `revokeTrackingToken`
+(`tracking.manage`), and the public `getPublicTrackingByToken` /
+`getPublicTrackingLrByToken` — hash-based lookup, IP rate-limited, one generic
+`NOT_FOUND` for every failure (wrong / revoked / expired token, unpaid or
+non-existent order) so token enumeration reveals nothing. `PublicTrackingDto` is
+an explicit, typed, minimal shape — status, stage timeline (built from
+`order_status_history` + booking timestamps), courier / LR / booking date /
+parcel count, an opaque `publicRef` display code, and city+state only — never an
+address, phone, name, email, DB id, order reference, or payment data. The
+customer reaches it from their confirmation page (which also offers a rotate-to-
+reveal shareable `/track/<token>` link); staff manage it from the order detail
+page. `/track/*` responses are `no-store`, `noindex`, `Referrer-Policy:
+no-referrer`.
+
 Phase 6: `bookings` (one per order — courier / LR number / booking date /
 parcel count / remarks, plus `packedAt`/`parcelBookedAt` and their actors),
 `lr_documents` (uploaded LR PDFs; re-upload marks the previous row
@@ -146,17 +164,13 @@ the DB). `booking-service` owns every transition — each writes
 `order_status_history` + `audit_logs` in one transaction. LR PDFs live in the
 private bucket (`lr-docs/`), validated by magic bytes + `%%EOF` + a
 `STORAGE_MAX_DOCUMENT_BYTES` cap, streamed only through `/api/lr/[orderId]/pdf`
-(`lr.download`, audited) or the customer's `/track/<reference>/lr-copy`
-(rate-limited, reference is the bearer capability). The customer tracking page
-`/track/<reference>` renders the live packing / dispatch timeline and shows
-"Download LR Copy" only once a current LR document exists. (Full Phase 7
-tracking — dedicated revocable tokens, `tracking_events` — still to come; Phase 6
-reuses the order's existing 24-byte random `reference`.)
+(`lr.download`, audited) or a customer tracking route (see Phase 7). The customer
+tracking page shows "Download LR Copy" only once a current LR document exists.
 
 ## Data model — later phases (planned)
 
-`payment_webhook_events`, `tracking_tokens`, `tracking_events`,
-`notification_outbox`, `notification_receipts`, `reviews`.
+`payment_webhook_events`, `notification_outbox`, `notification_receipts`,
+`reviews`.
 
 ## Sessions
 
