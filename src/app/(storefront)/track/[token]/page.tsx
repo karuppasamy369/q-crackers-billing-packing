@@ -53,6 +53,7 @@ export default async function TrackByTokenPage({
         dto={dto}
         t={t}
         lrHref={`/track/${encodeURIComponent(token)}/lr-copy`}
+        reviewToken={token}
       />
       <Link
         href="/"

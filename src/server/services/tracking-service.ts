@@ -105,6 +105,10 @@ export type PublicTrackingDto = {
   itemCount: number;
   destination: { city: string; state: string } | null;
   stages: TrackingStage[];
+  /** The customer may still submit a review for this order. */
+  canReview: boolean;
+  /** The customer's own review, once submitted (their view only). */
+  review: { rating: number; comment: string | null } | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -132,6 +136,7 @@ type OrderForTracking = Prisma.OrderGetPayload<{
     history: {
       select: { toStatus: true; createdAt: true };
     };
+    review: { select: { rating: true; comment: true; status: true } };
     _count: { select: { items: true } };
   };
 }>;
@@ -160,6 +165,7 @@ const ORDER_TRACKING_SELECT = {
     orderBy: { createdAt: "asc" },
     select: { toStatus: true, createdAt: true },
   },
+  review: { select: { rating: true, comment: true, status: true } },
   _count: { select: { items: true } },
 } satisfies Prisma.OrderSelect;
 
@@ -191,12 +197,17 @@ function buildTrackingDto(order: OrderForTracking): PublicTrackingDto {
   // booked.
   const booked = Boolean(parcelBookedAt);
 
+  const hasReview = Boolean(order.review);
+  const reviewEligible =
+    !cancelled &&
+    (order.status === "PARCEL_BOOKED" || order.status === "COMPLETED");
+
   const done = {
     PAYMENT: Boolean(paymentAt),
     PACKED: Boolean(packedAt),
     PARCEL_BOOKED: booked,
     LR_AVAILABLE: lrAvailable,
-    REVIEW: false, // reviews arrive in a later phase
+    REVIEW: hasReview,
   };
 
   const order_: TrackingStageKey[] = [
@@ -253,6 +264,10 @@ function buildTrackingDto(order: OrderForTracking): PublicTrackingDto {
       ? null
       : { city: order.city, state: order.stateName },
     stages,
+    canReview: reviewEligible && !hasReview,
+    review: order.review
+      ? { rating: order.review.rating, comment: order.review.comment }
+      : null,
   };
 }
 
@@ -272,6 +287,17 @@ async function resolveOrderIdByToken(rawToken: string): Promise<string> {
   if (!row || row.revokedAt) notTrackable();
   if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) notTrackable();
   return row.orderId;
+}
+
+/**
+ * Public: resolve the order id a tracking token points at, or throw the generic
+ * "not valid" error. The token hash is the only lookup key — no order field is
+ * ever accepted from the caller. Used by the review flow.
+ */
+export async function getOrderIdForTrackingToken(
+  rawToken: string,
+): Promise<string> {
+  return resolveOrderIdByToken(rawToken);
 }
 
 async function loadTrackableOrder(where: Prisma.OrderWhereUniqueInput) {
@@ -541,6 +567,38 @@ export async function getTrackingUrlForOrder(
   if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) return null;
   const token = deriveTrackingToken(orderId, row.linkVersion);
   return `${env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/track/${token}`;
+}
+
+/**
+ * The current raw tracking token for an order (rebuilt from the rotation
+ * version), or `null` when there is no active token. Server-only — used by the
+ * confirmation page to attach the review form to the same credential the
+ * `/track/<token>` page uses.
+ */
+export async function getTrackingTokenForOrder(
+  orderId: string,
+): Promise<string | null> {
+  const row = await db.trackingToken.findUnique({
+    where: { orderId },
+    select: { linkVersion: true, revokedAt: true, expiresAt: true },
+  });
+  if (!row || row.revokedAt) return null;
+  if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) return null;
+  return deriveTrackingToken(orderId, row.linkVersion);
+}
+
+/** As {@link getTrackingTokenForOrder}, resolved by the customer's order
+ *  reference (the confirmation page's bearer capability). */
+export async function getTrackingTokenByReference(
+  rawReference: string,
+): Promise<string | null> {
+  const parsed = orderReferenceSchema.safeParse(rawReference);
+  if (!parsed.success) return null;
+  const order = await db.order.findUnique({
+    where: { reference: parsed.data },
+    select: { id: true },
+  });
+  return order ? getTrackingTokenForOrder(order.id) : null;
 }
 
 /**

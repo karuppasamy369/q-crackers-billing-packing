@@ -157,6 +157,13 @@ enum NotificationStatus {
   SKIPPED
 }
 
+/// Visibility of a customer review. Reviews are soft-hidden, not silently
+/// edited; a partner can also delete one outright (`reviews.moderate`).
+enum ReviewStatus {
+  PUBLISHED
+  HIDDEN
+}
+
 // ---------------------------------------------------------------------------
 // RBAC
 // ---------------------------------------------------------------------------
@@ -272,6 +279,7 @@ model User {
   lrDocumentsUploaded   LrDocument[]            @relation("LrUploader")
   trackingTokensIssued  TrackingToken[]         @relation("TrackingTokenIssuer")
   trackingTokensRevoked TrackingToken[]         @relation("TrackingTokenRevoker")
+  reviewsModerated      Review[]                @relation("ReviewModerator")
 
   @@index([roleId])
   @@map("users")
@@ -493,6 +501,7 @@ model Customer {
   orders        Order[]
   bills         Bill[]
   notifications NotificationOutbox[]
+  reviews       Review[]
 
   @@index([phoneNormalized])
   @@map("customers")
@@ -559,6 +568,7 @@ model Order {
   booking         Booking?
   trackingToken   TrackingToken?
   notifications   NotificationOutbox[]
+  review          Review?
 
   @@index([customerId])
   @@index([assignedPartnerId])
@@ -956,4 +966,41 @@ model NotificationOutbox {
   @@index([status, nextAttemptAt])
   @@index([orderId])
   @@map("notification_outbox")
+}
+
+// ---------------------------------------------------------------------------
+// Customer reviews (Phase 9)
+// ---------------------------------------------------------------------------
+
+/// One review per order. Submitted from the tracking page (resolved by the
+/// Phase 7 tracking token) once the parcel has been dispatched. A DB CHECK
+/// pins the rating to 1–5; the app trims/limits the comment. Partners moderate
+/// via `reviews.moderate` (view / hide / delete); staff do not by default.
+model Review {
+  id         String @id @default(uuid()) @db.Uuid
+  orderId    String @unique @db.Uuid
+  customerId String? @db.Uuid
+
+  rating  Int
+  comment String?
+  /// Given name only, snapshotted for display — never a full contact detail.
+  reviewerName String?
+
+  status         ReviewStatus @default(PUBLISHED)
+  moderatedById  String?      @db.Uuid
+  moderatedAt    DateTime?
+  moderationNote String?
+
+  submittedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customer    Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  moderatedBy User?     @relation("ReviewModerator", fields: [moderatedById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([submittedAt])
+  @@index([rating])
+  @@map("reviews")
 }

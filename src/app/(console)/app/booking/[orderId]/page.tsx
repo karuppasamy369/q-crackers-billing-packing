@@ -10,6 +10,7 @@ import {
   MarkPackedForm,
   ParcelBookingForm,
   LrUploadForm,
+  MarkCompletedForm,
 } from "../booking-forms";
 
 const STATUS_STYLES: Record<string, string> = {
@@ -46,9 +47,12 @@ export default async function BookingDetailPage({
 
   const b = order.booking;
   const currentLr = b?.lrDocuments.find((d) => d.isCurrent) ?? null;
-  const inBookingScope = ["PAID", "PACKED", "PARCEL_BOOKED"].includes(
-    order.status,
-  );
+  const inBookingScope = [
+    "PAID",
+    "PACKED",
+    "PARCEL_BOOKED",
+    "COMPLETED",
+  ].includes(order.status);
 
   const defaults = {
     courierName: b?.courierName ?? "",
@@ -237,6 +241,21 @@ export default async function BookingDetailPage({
                   </div>
                 </details>
               ) : null}
+              {canBook && currentLr ? (
+                <div className="mt-3 border-t border-gray-100 pt-3">
+                  <MarkCompletedForm orderId={order.id} />
+                </div>
+              ) : canBook ? (
+                <p className="mt-3 border-t border-gray-100 pt-3 text-xs text-gray-400">
+                  Upload the LR document to enable “Mark completed”.
+                </p>
+              ) : null}
+            </Card>
+          ) : null}
+
+          {order.status === "COMPLETED" ? (
+            <Card className="border-green-200 bg-green-50">
+              <p className="text-sm text-green-800">This order is completed.</p>
             </Card>
           ) : null}
 

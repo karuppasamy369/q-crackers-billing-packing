@@ -135,6 +135,20 @@ indexes enforce one live payment per order and one recorded UTR globally; a
 `ORDER_HOLD_MINUTES` raised to 1440 (manual verification takes longer than a
 gateway redirect).
 
+Phase 9: `reviews` (one per order, unique `orderId`; rating 1–5 CHECK,
+`ReviewStatus` PUBLISHED/HIDDEN). Submitted from `/track/<token>` via
+`reviews-service.submitReview` — the token hash is the only credential, the
+order must be `PAID` and `PARCEL_BOOKED`/`COMPLETED`, and the store keeps only a
+given name + city/state. Partners moderate through `/app/reviews`
+(`reviews.moderate`). Phase 9 also completes the order state machine with the
+`PARCEL_BOOKED → COMPLETED` transition (`booking.book_parcel`, LR required),
+`reports-service` (partner-only, `reports.view`; ten read-only aggregate reports
+over a validated date range — `groupBy`/`aggregate` with one parameterised
+`$queryRaw` for the daily time series), and audit-log date-range + free-text
+filters. Final hardening: `serverActions.bodySizeLimit` raised to `12mb` to
+clear the 10 MB document cap, and the customer phone in the `order.create` audit
+detail is now masked.
+
 Phase 8: `notification_outbox` (one row per order+event, unique `dedupeKey`),
 `orders.locale` (checkout locale — the language a customer's WhatsApp messages
 render in), `tracking_tokens.linkVersion`. WhatsApp delivery is a
@@ -191,7 +205,8 @@ tracking page shows "Download LR Copy" only once a current LR document exists.
 ## Data model — later phases (planned)
 
 `payment_webhook_events`, `notification_receipts` (per-recipient delivery
-receipts, if a BSP provides them), `reviews`.
+receipts, if a BSP provides them). A shared rate-limit store for public
+endpoints (Redis) and Google Business review sync remain future work.
 
 ## Sessions
 

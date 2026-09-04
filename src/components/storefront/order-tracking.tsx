@@ -3,6 +3,7 @@ import type {
   PublicTrackingDto,
   TrackingStageKey,
 } from "@/server/services/tracking-service";
+import { ReviewForm } from "./review-form";
 
 const STAGE_LABEL: Record<TrackingStageKey, keyof Dictionary["tracking"]> = {
   PAYMENT: "stagePayment",
@@ -28,10 +29,13 @@ export function OrderTracking({
   dto,
   t,
   lrHref,
+  reviewToken,
 }: {
   dto: PublicTrackingDto;
   t: Dictionary;
   lrHref: string;
+  /** Present ⇒ the customer can submit a review with this tracking token. */
+  reviewToken?: string | null;
 }) {
   const tk = t.tracking;
 
@@ -128,9 +132,28 @@ export function OrderTracking({
                     {tk.downloadLr}
                   </a>
                 ) : null}
-                {isReview && !dto.cancelled ? (
+                {isReview && dto.review ? (
+                  <div className="mt-1 text-xs text-gray-600">
+                    <p>
+                      {t.review.yourRating}:{" "}
+                      <span className="text-amber-500">
+                        {"★".repeat(dto.review.rating)}
+                        <span className="text-gray-300">
+                          {"★".repeat(5 - dto.review.rating)}
+                        </span>
+                      </span>
+                    </p>
+                    {dto.review.comment ? (
+                      <p className="mt-1 whitespace-pre-line text-gray-500">
+                        “{dto.review.comment}”
+                      </p>
+                    ) : null}
+                  </div>
+                ) : isReview && dto.canReview && reviewToken ? (
+                  <ReviewForm token={reviewToken} t={t} />
+                ) : isReview && !dto.cancelled ? (
                   <p className="mt-1 text-xs text-gray-400">
-                    {tk.reviewPending}
+                    {dto.canReview ? tk.reviewPending : t.review.notEligible}
                   </p>
                 ) : null}
               </div>

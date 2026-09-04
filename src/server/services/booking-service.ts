@@ -303,6 +303,68 @@ export async function confirmParcelBooked(raw: unknown) {
   return loadBookingDetail(order.id);
 }
 
+/**
+ * PARCEL_BOOKED → COMPLETED. The final state — the parcel has been delivered /
+ * the order is closed. Requires the parcel to be booked and an LR document on
+ * file (matches the architecture: "LR uploaded + confirmed → COMPLETED").
+ */
+export async function markOrderCompleted(raw: unknown) {
+  const auth = await requirePermission("booking.book_parcel");
+  const { orderId } = parseInput(bookingOrderIdSchema, raw);
+  const ctx = await getRequestContext();
+
+  const order = await requireOrder(orderId);
+  if (order.status === "COMPLETED") {
+    throw new ValidationError("This order is already completed.");
+  }
+  if (order.status !== "PARCEL_BOOKED") {
+    throw new AppError(
+      "CONFLICT",
+      "Only a parcel-booked order can be marked completed.",
+    );
+  }
+  const lr = await db.lrDocument.findFirst({
+    where: { orderId: order.id, isCurrent: true },
+    select: { id: true },
+  });
+  if (!lr) {
+    throw new AppError(
+      "CONFLICT",
+      "Upload the LR document before completing the order.",
+    );
+  }
+
+  await db.$transaction(async (tx) => {
+    await tx.order.update({
+      where: { id: order.id },
+      data: { status: "COMPLETED" },
+    });
+    await tx.orderStatusHistory.create({
+      data: {
+        orderId: order.id,
+        fromStatus: "PARCEL_BOOKED",
+        toStatus: "COMPLETED",
+        changedById: auth.user.id,
+        reason: "Order completed / delivered",
+      },
+    });
+    await recordAudit(
+      auditActor(auth),
+      {
+        action: "booking.complete",
+        summary: `${auth.user.code} completed order ${order.reference}`,
+        entityType: "Order",
+        entityId: order.id,
+        details: { reference: order.reference },
+      },
+      ctx,
+      tx,
+    );
+  });
+
+  return loadBookingDetail(order.id);
+}
+
 /** Edit courier / LR details on an already-booked parcel (no status change). */
 export async function updateBookingDetails(raw: unknown) {
   const auth = await requirePermission("booking.book_parcel");

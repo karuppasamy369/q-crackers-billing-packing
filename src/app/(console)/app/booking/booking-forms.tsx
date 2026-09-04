@@ -8,6 +8,7 @@ import {
   confirmParcelBookedAction,
   updateBookingAction,
   uploadLrAction,
+  markCompletedAction,
 } from "./actions";
 import type { ActionResult } from "@/server/http/action-result";
 
@@ -65,6 +66,34 @@ type ParcelDefaults = {
   parcelCount: string;
   remarks: string;
 };
+
+export function MarkCompletedForm({ orderId }: { orderId: string }) {
+  const router = useRouter();
+  const [state, action, pending] = useActionState<
+    ActionResult | null,
+    FormData
+  >(markCompletedAction, null);
+  useEffect(() => {
+    if (state?.ok) router.refresh();
+  }, [state, router]);
+
+  return (
+    <form action={action} className="space-y-3">
+      <input type="hidden" name="orderId" value={orderId} readOnly />
+      <p className="text-sm text-gray-600">
+        Mark this order delivered / completed. This is the final state.
+      </p>
+      <Status state={state} />
+      <button
+        type="submit"
+        disabled={pending}
+        className="rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 disabled:opacity-50"
+      >
+        {pending ? "Working…" : "Mark completed"}
+      </button>
+    </form>
+  );
+}
 
 export function ParcelBookingForm({
   orderId,

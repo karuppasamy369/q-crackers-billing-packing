@@ -22,6 +22,9 @@ export default async function AuditPage({
     actorCode: sp.actorCode,
     entityType: sp.entityType,
     entityId: sp.entityId,
+    q: sp.q,
+    dateFrom: sp.dateFrom,
+    dateTo: sp.dateTo,
     page: sp.page ?? 1,
   });
 
@@ -46,6 +49,12 @@ export default async function AuditPage({
       <Card className="p-0">
         <form className="flex flex-wrap gap-2 border-b border-gray-200 p-3 text-sm">
           <input
+            name="q"
+            defaultValue={sp.q ?? ""}
+            placeholder="order / bill id, or text in summary"
+            className="w-56 rounded-md border border-gray-300 px-2 py-1.5"
+          />
+          <input
             name="action"
             defaultValue={sp.action ?? ""}
             placeholder="action contains…"
@@ -55,16 +64,34 @@ export default async function AuditPage({
             <input
               name="actorCode"
               defaultValue={sp.actorCode ?? ""}
-              placeholder="actor code (P1…)"
-              className="rounded-md border border-gray-300 px-2 py-1.5"
+              placeholder="actor code (PK…)"
+              className="w-28 rounded-md border border-gray-300 px-2 py-1.5"
             />
           ) : null}
           <input
             name="entityType"
             defaultValue={sp.entityType ?? ""}
             placeholder="entity type"
-            className="rounded-md border border-gray-300 px-2 py-1.5"
+            className="w-32 rounded-md border border-gray-300 px-2 py-1.5"
           />
+          <label className="flex items-center gap-1 text-xs text-gray-500">
+            from
+            <input
+              type="date"
+              name="dateFrom"
+              defaultValue={sp.dateFrom ?? ""}
+              className="rounded-md border border-gray-300 px-2 py-1.5"
+            />
+          </label>
+          <label className="flex items-center gap-1 text-xs text-gray-500">
+            to
+            <input
+              type="date"
+              name="dateTo"
+              defaultValue={sp.dateTo ?? ""}
+              className="rounded-md border border-gray-300 px-2 py-1.5"
+            />
+          </label>
           <button
             type="submit"
             className="rounded-md bg-gray-900 px-3 py-1.5 font-semibold text-white"
@@ -104,11 +131,28 @@ export default async function AuditPage({
                   ) : null}
                 </td>
                 <td className="px-4 py-3 font-mono text-xs">{r.action}</td>
-                <td className="px-4 py-3">{r.summary}</td>
+                <td className="px-4 py-3">
+                  {r.summary}
+                  {r.details ? (
+                    <details className="mt-1 text-xs text-gray-400">
+                      <summary className="cursor-pointer select-none">
+                        details
+                      </summary>
+                      <pre className="mt-1 max-w-md overflow-x-auto rounded bg-gray-50 p-2 text-[11px] text-gray-600">
+                        {JSON.stringify(r.details, null, 2)}
+                      </pre>
+                    </details>
+                  ) : null}
+                </td>
                 <td className="px-4 py-3 text-xs text-gray-500">
                   {r.entityType
                     ? `${r.entityType}${r.entityId ? ` · ${r.entityId.slice(0, 8)}` : ""}`
                     : "—"}
+                  {r.ip ? (
+                    <span className="block text-[11px] text-gray-300">
+                      {r.ip}
+                    </span>
+                  ) : null}
                 </td>
               </tr>
             ))}

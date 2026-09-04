@@ -49,9 +49,10 @@ const nextConfig: NextConfig = {
   typescript: { ignoreBuildErrors: false },
   eslint: { ignoreDuringBuilds: false },
   experimental: {
-    // Product image uploads go through Server Actions; allow up to ~6 MB
-    // (the app caps images at STORAGE_MAX_IMAGE_BYTES, default 5 MB).
-    serverActions: { bodySizeLimit: "6mb" },
+    // Uploads go through Server Actions. The cap must clear the largest file
+    // the app accepts — LR / parcel PDFs at STORAGE_MAX_DOCUMENT_BYTES (default
+    // 10 MB) — with a little headroom for the multipart envelope.
+    serverActions: { bodySizeLimit: "12mb" },
   },
   // @react-pdf/renderer (bill PDFs) must not be bundled — it loads fonts and
   // uses Node internals at runtime.

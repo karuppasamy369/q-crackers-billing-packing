@@ -12,6 +12,7 @@ import { generateRandomToken } from "@/server/auth/tokens";
 import { rateLimit } from "@/lib/rate-limit";
 import { formatPaise } from "@/lib/money";
 import { normalizeIndianMobile, stateNameForCode } from "@/lib/india";
+import { maskPhone } from "@/lib/notifications/phone";
 import {
   checkoutSchema,
   orderReferenceSchema,
@@ -222,7 +223,9 @@ export async function createOnlineOrder(
           totalPaise: quote.totalPaise,
           itemCount: quote.lines.length,
           reserved: quote.lines.map((l) => ({ sku: l.sku, qty: l.quantity })),
-          customerPhone: phoneNormalized,
+          // Masked — the order id links to the full customer record for anyone
+          // authorised to view it; the audit trail keeps only a hint.
+          customerPhone: maskPhone(phoneNormalized),
           pincode: customer.pincode,
           assignedPartnerCode: assignedPartner?.code ?? null,
           viaPartnerLink: viaLink,
@@ -248,9 +251,7 @@ async function resolveAssignedPartner(
   linkCode: string | null | undefined,
   housePartnerCode: string,
 ): Promise<{ partner: { id: string; code: string } | null; viaLink: boolean }> {
-  const parsed = linkCode
-    ? partnerLinkCodeSchema.safeParse(linkCode)
-    : null;
+  const parsed = linkCode ? partnerLinkCodeSchema.safeParse(linkCode) : null;
 
   if (parsed?.success) {
     const user = await db.user.findUnique({
@@ -388,6 +389,14 @@ export async function getOrderForConsole(id: string) {
           packedAt: true,
           parcelBookedAt: true,
           lrDocuments: { where: { isCurrent: true }, select: { id: true } },
+        },
+      },
+      review: {
+        select: {
+          rating: true,
+          comment: true,
+          status: true,
+          submittedAt: true,
         },
       },
     },

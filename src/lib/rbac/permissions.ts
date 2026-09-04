@@ -103,7 +103,7 @@ export const PERMISSIONS = {
   },
   "reviews.moderate": {
     category: "Reviews",
-    description: "View and unpublish customer reviews",
+    description: "View, hide, and delete customer reviews",
   },
 
   "reports.view": {

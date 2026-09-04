@@ -11,6 +11,7 @@ import {
   confirmParcelBooked,
   updateBookingDetails,
   uploadLrDocument,
+  markOrderCompleted,
 } from "@/server/services/booking-service";
 
 function revalidateBooking(orderId: string) {
@@ -70,6 +71,20 @@ export async function updateBookingAction(
     await updateBookingDetails(input);
     revalidateBooking(input.orderId);
     return actionOk(undefined, "Booking details updated.");
+  } catch (err) {
+    return actionFail(err);
+  }
+}
+
+export async function markCompletedAction(
+  _prev: ActionResult | null,
+  fd: FormData,
+): Promise<ActionResult> {
+  const orderId = String(fd.get("orderId") ?? "");
+  try {
+    await markOrderCompleted({ orderId });
+    revalidateBooking(orderId);
+    return actionOk(undefined, "Order marked as completed.");
   } catch (err) {
     return actionFail(err);
   }

@@ -7,6 +7,7 @@ import { getOrderByReference } from "@/server/services/orders-service";
 import {
   getPublicTrackingByReference,
   ensureTrackingTokenByReference,
+  getTrackingTokenByReference,
 } from "@/server/services/tracking-service";
 import { isAppError } from "@/server/http/errors";
 import { formatPaise } from "@/lib/money";
@@ -50,12 +51,20 @@ export default async function ConfirmationPage({
 
   // Once payment is verified, provision the tracking token (idempotent) and
   // load the customer-safe tracking view.
-  const [tracking, ensured] = paid
-    ? await Promise.all([
-        getPublicTrackingByReference(reference),
-        ensureTrackingTokenByReference(reference),
-      ])
-    : [null, { created: false, token: null as string | null }];
+  let tracking = null;
+  let ensured: { created: boolean; token: string | null } = {
+    created: false,
+    token: null,
+  };
+  let reviewToken: string | null = null;
+  if (paid) {
+    [tracking, ensured] = await Promise.all([
+      getPublicTrackingByReference(reference),
+      ensureTrackingTokenByReference(reference),
+    ]);
+    reviewToken =
+      ensured.token ?? (await getTrackingTokenByReference(reference));
+  }
   const shareUrl = ensured.token
     ? `${env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/track/${ensured.token}`
     : null;
@@ -103,6 +112,7 @@ export default async function ConfirmationPage({
               lrHref={`/checkout/confirmation/${encodeURIComponent(
                 order.reference,
               )}/lr-copy`}
+              reviewToken={reviewToken}
             />
           </div>
           <TrackingShareCard

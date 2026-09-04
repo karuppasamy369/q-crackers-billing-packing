@@ -156,6 +156,21 @@ export type Dictionary = {
     lrAvailable: string;
     reviewRequest: string;
   };
+  review: {
+    heading: string;
+    prompt: string;
+    ratingLabel: string;
+    starAria: string;
+    commentLabel: string;
+    commentPlaceholder: string;
+    submit: string;
+    submitting: string;
+    thanksTitle: string;
+    thanksBody: string;
+    yourRating: string;
+    notEligible: string;
+    error: string;
+  };
   footer: {
     contact: string;
     rights: string;
@@ -322,6 +337,21 @@ const en: Dictionary = {
       "Q Crackers: Hi {name}, the LR copy for order {orderNo} (LR number {lrNumber}) is now available. You can download it from your tracking page: {link}",
     reviewRequest:
       "Q Crackers: Hi {name}, we hope you enjoyed your order {orderNo}. If you have a moment, we would love your feedback: {link}",
+  },
+  review: {
+    heading: "Rate your order",
+    prompt: "How was your experience with Q Crackers?",
+    ratingLabel: "Your rating",
+    starAria: "{n} stars",
+    commentLabel: "Add a comment (optional)",
+    commentPlaceholder: "Tell us what went well or what we could improve…",
+    submit: "Submit review",
+    submitting: "Submitting…",
+    thanksTitle: "Thank you for your review!",
+    thanksBody: "Your feedback helps us serve customers better.",
+    yourRating: "Your rating",
+    notEligible: "You can leave a review once your parcel is on its way.",
+    error: "We could not save your review. Please try again.",
   },
   footer: {
     contact: "Contact",
@@ -494,6 +524,24 @@ const ta: Dictionary = {
       "Q Crackers: வணக்கம் {name}, ஆர்டர் {orderNo}-க்கான LR நகல் (LR எண் {lrNumber}) இப்போது கிடைக்கிறது. உங்கள் கண்காணிப்புப் பக்கத்திலிருந்து பதிவிறக்கலாம்: {link}",
     reviewRequest:
       "Q Crackers: வணக்கம் {name}, உங்கள் ஆர்டர் {orderNo} உங்களுக்குப் பிடித்திருக்கும் என நம்புகிறோம். சிறிது நேரம் இருந்தால், உங்கள் கருத்தைப் பகிருங்கள்: {link}",
+  },
+  review: {
+    heading: "உங்கள் ஆர்டரை மதிப்பிடுங்கள்",
+    prompt: "Q Crackers உடனான உங்கள் அனுபவம் எப்படி இருந்தது?",
+    ratingLabel: "உங்கள் மதிப்பீடு",
+    starAria: "{n} நட்சத்திரங்கள்",
+    commentLabel: "கருத்து சேர்க்கவும் (விருப்பம்)",
+    commentPlaceholder:
+      "நன்றாக இருந்தது என்ன, மேம்படுத்த வேண்டியது என்ன என்று சொல்லுங்கள்…",
+    submit: "மதிப்பீட்டைச் சமர்ப்பி",
+    submitting: "சமர்ப்பிக்கிறது…",
+    thanksTitle: "உங்கள் மதிப்பீட்டிற்கு நன்றி!",
+    thanksBody:
+      "உங்கள் கருத்து வாடிக்கையாளர்களுக்கு சிறப்பாக சேவை செய்ய உதவுகிறது.",
+    yourRating: "உங்கள் மதிப்பீடு",
+    notEligible:
+      "உங்கள் பார்சல் வழியில் சென்றதும் நீங்கள் மதிப்பீடு அளிக்கலாம்.",
+    error: "உங்கள் மதிப்பீட்டைச் சேமிக்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
   },
   footer: {
     contact: "தொடர்பு",

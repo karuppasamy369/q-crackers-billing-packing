@@ -105,6 +105,27 @@ error", fix the cause (e.g. template not approved, number not on WhatsApp), then
 "Retry". `PENDING` with "not configured" = set up the provider (see above).
 Send a review request from the order detail page once the parcel is booked.
 
+**Moderate a review** — Reviews (partner-only, `reviews.moderate`). Customers
+submit a 1–5 star rating + optional comment from their tracking page once the
+parcel is dispatched (one per order). "Hide" removes it from any public listing
+but keeps it; "Delete" removes it entirely. Both are audit-logged. Reviews only
+ever store a given name + city/state — no contact details.
+
+**Complete an order** — Booking → order → "Mark completed" (needs the LR
+uploaded). This is the final state; it also unlocks the review prompt.
+
+**Run a report** — Reports (partner-only, `reports.view`). Pick a date range
+(≤ 400 days) and read daily/period sales, billing by login code, product-wise
+sales, GST summary, payment summary, order-status and packing/booking counts,
+cancellations, and stock movement. Figures cover **issued** bills; cancelled
+bills are listed separately. Read-only — nothing here changes data.
+
+**Investigate with the audit log** — Audit (partners see everything; staff see
+only their own actions). Filter by free text (order/bill id or words in the
+summary), action, actor code, entity type, and a date range. Entries are
+append-only. Sensitive values (tokens, password hashes, credentials) are
+redacted before storage; the customer phone in `order.create` is masked.
+
 ## Incident: suspected credential compromise
 
 1. Reset the affected account's password (revokes all sessions).

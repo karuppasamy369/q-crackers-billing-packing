@@ -145,7 +145,9 @@ export default async function OrderDetailPage({
                 <span className="font-mono">
                   {order.assignedPartnerCode ?? "—"}
                 </span>
-                {order.assignedPartner ? ` (${order.assignedPartner.name})` : ""}
+                {order.assignedPartner
+                  ? ` (${order.assignedPartner.name})`
+                  : ""}
               </p>
               <p>
                 Payment status:{" "}
@@ -297,6 +299,41 @@ export default async function OrderDetailPage({
                   Review request queued.
                 </p>
               ) : null}
+            </Card>
+          ) : null}
+
+          {order.review ? (
+            <Card>
+              <h2 className="text-sm font-semibold">Customer review</h2>
+              <div className="mt-2 text-sm text-gray-600">
+                <p className="text-amber-500">
+                  {"★".repeat(order.review.rating)}
+                  <span className="text-gray-300">
+                    {"★".repeat(5 - order.review.rating)}
+                  </span>
+                  {order.review.status === "HIDDEN" ? (
+                    <span className="ml-2 rounded bg-gray-200 px-1.5 py-0.5 text-xs text-gray-600">
+                      hidden
+                    </span>
+                  ) : null}
+                </p>
+                {order.review.comment ? (
+                  <p className="mt-1 whitespace-pre-line text-gray-700">
+                    “{order.review.comment}”
+                  </p>
+                ) : null}
+                <p className="mt-1 text-xs text-gray-400">
+                  {new Date(order.review.submittedAt).toLocaleString()}
+                </p>
+                {hasPermission(auth, "reviews.moderate") ? (
+                  <Link
+                    href="/app/reviews"
+                    className="mt-1 inline-block text-xs underline hover:text-gray-700"
+                  >
+                    Manage reviews
+                  </Link>
+                ) : null}
+              </div>
             </Card>
           ) : null}
 

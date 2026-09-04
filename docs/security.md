@@ -170,6 +170,40 @@ in Phase 1, ⏳ = designed, lands in a later phase.
 | Console never shows secrets or full phone numbers            | ✅     | provider status shows only the mode + configured flag; recipients rendered masked                                                                                                       |
 | Notification lifecycle audit-logged                          | ✅     | `notification.enqueued` / `notification.sent` / `notification.dead` / `notification.retry` entries                                                                                      |
 
+## Reviews, reports & audit (Phase 9)
+
+| Control                                                     | Status | Where                                                                                                                                         |
+| ----------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Review submission is token-gated, not id-gated              | ✅     | `submitReview` calls `getOrderIdForTrackingToken` (hash lookup); no order field is accepted from the client (integration-tested)              |
+| Only eligible completed-ish orders can be reviewed          | ✅     | requires `paymentStatus = PAID` and status `PARCEL_BOOKED`/`COMPLETED`; a bad token gives the generic tracking not-found (tested)             |
+| One review per order — no duplicates                        | ✅     | `reviews.orderId @unique`; a second submit returns `already_reviewed`; P2002 caught on the race (integration-tested)                          |
+| Rating + comment validated server-side                      | ✅     | `submitReviewSchema` (1–5 int, comment ≤ 1000, control chars stripped); DB CHECK `rating BETWEEN 1 AND 5` (unit + integration)                |
+| Public review endpoint is rate-limited                      | ✅     | `rateLimit("review:submit:<ip>", 5 / 10 min)`                                                                                                 |
+| Review store / DTO carries no customer contact data         | ✅     | only a given name + city/state; `listReviews` output asserted to contain no phone / email / address (integration-tested)                      |
+| Review comment cannot inject markup                         | ✅     | stored as text, rendered through React (auto-escaped); no `dangerouslySetInnerHTML` anywhere in the app                                       |
+| Review moderation is partner-only, server-enforced          | ✅     | `reviews.moderate` gates `listReviews` / `moderateReview` / `getReviewStats` (integration-tested → 403 for staff); not a staff default        |
+| Every moderation action is audit-logged                     | ✅     | `review.submit` / `review.hide` / `review.publish` / `review.delete`                                                                          |
+| Reports are partner-only, server-enforced, read-only        | ✅     | every `reports-service` entry point calls `requirePermission("reports.view")`; no mutations (integration-tested → 403 for staff)              |
+| Report date inputs are validated                            | ✅     | `reportRangeSchema` (YYYY-MM-DD, from ≤ to, ≤ 400-day span, 2020..today); invalid → `ValidationError` (unit + integration)                    |
+| Report SQL is parameterised                                 | ✅     | Prisma `groupBy`/`aggregate`; the one `$queryRaw` uses `Prisma.sql` with bound `Date` params — no string interpolation                        |
+| Audit filtering does not widen a staffer's scope            | ✅     | `audit.view_own` still hard-scopes `actorUserId` regardless of any `actorCode` / `q` filter (integration-tested)                              |
+| Audit date + free-text filters                              | ✅     | `dateFrom` / `dateTo` / `q` (summary + entity id, `contains`, parameterised); `q` cannot escape the `where`                                   |
+| Audit details never carry raw secrets                       | ✅     | `recordAudit` runs `redact()` (covers `token`, `tokenHash`, `password*`, `*access_token*`, …); customer phone in `order.create` is now masked |
+| Audit log stays append-only                                 | ✅     | DB trigger rejects UPDATE/DELETE — re-verified in Phase 9 tests                                                                               |
+| Server Action body limit clears the largest upload          | ✅     | `serverActions.bodySizeLimit` raised `6mb → 12mb` (≥ `STORAGE_MAX_DOCUMENT_BYTES` 10 MB) — fixes a Phase 6 mismatch                           |
+| `COMPLETED` transition guarded like the rest of the machine | ✅     | `booking.book_parcel` + must be `PARCEL_BOOKED` + LR on file; writes history + audit in one transaction (integration-tested)                  |
+
+### Phase 9 hardening review — findings
+
+A full pass over the checklist (auth, RBAC, sessions, CSRF, input validation,
+ORM safety, XSS, file uploads, LR/PDF access, tracking tokens, rate limiting,
+headers/CSP, secret handling, error leakage, API authz, IDOR, payment & webhook
+security, notification security, audit integrity) found the controls from
+Phases 0–8 intact. Two improvements were made and are covered above: the
+Server-Action body-size limit now clears the 10 MB document cap, and the
+customer phone number in one audit-detail record is masked. No control was
+weakened.
+
 ## Known Phase 1 limitations
 
 - Rate limiting is per-process. On multi-instance hosting it is a soft layer;

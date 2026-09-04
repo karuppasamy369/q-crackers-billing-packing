@@ -71,6 +71,12 @@ export const NAV_ITEMS: NavItem[] = [
     available: true,
   },
   {
+    label: "Reviews",
+    href: "/app/reviews",
+    permission: "reviews.moderate",
+    available: true,
+  },
+  {
     label: "Customers",
     href: "/app/customers",
     permission: "customers.view",
@@ -80,7 +86,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Reports",
     href: "/app/reports",
     permission: "reports.view",
-    available: false,
+    available: true,
   },
   {
     label: "Staff",
